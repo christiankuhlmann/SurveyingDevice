@@ -1,4 +1,9 @@
 #include "BLE.h"
+#include "debug.h"
+
+using namespace Debug;
+
+BLEData shared_ble_data;
 
 void MyServerCallbacks::onConnect(BLEServer* pServer) {
     device_connected = true;
@@ -10,7 +15,8 @@ void MyServerCallbacks::onDisconnect(BLEServer* pServer) {
 
 MyCommandCharacteristicCallbacks::MyCommandCharacteristicCallbacks(BLEData* ble_data_ptr)
 {
-    pBLEData = pBLEData;
+    pBLEData = ble_data_ptr
+    ;
 }
 
 void MyCommandCharacteristicCallbacks::onWrite(BLECharacteristic *pCharacteristic)
@@ -99,7 +105,7 @@ void BLEHandler::start()
     bean_boi_service->addCharacteristic(command_charateristic);
     command_charateristic->setValue("none");
     command_descriptor->setValue("Command characteristic");
-    command_charateristic->setCallbacks(new MyCommandCharacteristicCallbacks(&shared_bledata));
+    command_charateristic->setCallbacks(new MyCommandCharacteristicCallbacks(&shared_ble_data));
 
     // Begin bluetooth...
     bean_boi_service->start();
@@ -112,7 +118,7 @@ void BLEHandler::start()
 void BLEHandler::update()
 {
     Node temp_node;
-    shared_bledata.read_data(&temp_node);
+    shared_ble_data.read_data(&temp_node);
     debugf(DEBUG_BLE,"Updating BLE. Data: h: %f i: %f d: %f id: %i \n",temp_node.heading, temp_node.inclination, temp_node.distance, temp_node.id);
     azimuth_characteristic->setValue(temp_node.heading);
     inclination_characteristic->setValue(temp_node.inclination);

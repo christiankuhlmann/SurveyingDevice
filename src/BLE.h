@@ -43,7 +43,7 @@ static std::mutex ble_data_mtx;
 static std::mutex ble_command_mtx;
 static char command[CMD_SIZE] = "No command";
 
-TaskHandle_t BLEHandler_task;
+static TaskHandle_t BLEHandler_task;
 void blehandler(void* parameter);
 
 
@@ -59,7 +59,10 @@ struct Node
 class BLEData
 {
   public:
+    // Writes data to the BLEData object given a node object
     void write_data(const Node* new_data);
+
+    // Reads data from the BLEData object into a node object
     void read_data(Node* node_obj);
 
     void write_command(const char* command);
@@ -81,7 +84,7 @@ class MyServerCallbacks: public BLEServerCallbacks {
 };
 
 // Define characteristic callbacks such that write events can be reacted to
-class MyCommandCharacteristicCallbacks:public BLECharacteristicCallbacks {
+class MyCommandCharacteristicCallbacks: public BLECharacteristicCallbacks {
   public:
     MyCommandCharacteristicCallbacks(BLEData* ble_data_ptr);
     
