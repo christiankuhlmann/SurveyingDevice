@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
     "files.associations": {
         "dense": "cpp",
         "core": "cpp",
@@ -7,3 +8,20 @@
     "nrf-connect.toolchain.path": "${nrf-connect.toolchain:2.3.0}",
     "cmake.configureOnOpen": false
 }
+=======
+    "C_Cpp.intelliSenseEngine": "default",
+    "idf.adapterTargetName": "esp32",
+    "idf.customExtraPaths": "C:\\Users\\chris\\.espressif\\tools\\xtensa-esp32-elf\\esp-2021r2-patch5-8.4.0\\xtensa-esp32-elf\\bin;C:\\Users\\chris\\.espressif\\tools\\xtensa-esp32s2-elf\\esp-2021r2-patch5-8.4.0\\xtensa-esp32s2-elf\\bin;C:\\Users\\chris\\.espressif\\tools\\xtensa-esp32s3-elf\\esp-2021r2-patch5-8.4.0\\xtensa-esp32s3-elf\\bin;C:\\Users\\chris\\.espressif\\tools\\riscv32-esp-elf\\esp-2021r2-patch5-8.4.0\\riscv32-esp-elf\\bin;C:\\Users\\chris\\.espressif\\tools\\esp32ulp-elf\\2.35_20220830\\esp32ulp-elf\\bin;C:\\Users\\chris\\.espressif\\tools\\cmake\\3.23.1\\bin;C:\\Users\\chris\\.espressif\\tools\\openocd-esp32\\v0.11.0-esp32-20220706\\openocd-esp32\\bin;C:\\Users\\chris\\.espressif\\tools\\ninja\\1.10.2;C:\\Users\\chris\\.espressif\\tools\\idf-exe\\1.0.3;C:\\Users\\chris\\.espressif\\tools\\ccache\\4.3\\ccache-4.3-windows-64;C:\\Users\\chris\\.espressif\\tools\\dfu-util\\0.9\\dfu-util-0.9-win64",
+    "idf.customExtraVars": {
+        "OPENOCD_SCRIPTS": "C:\\Users\\chris\\.espressif\\tools\\openocd-esp32\\v0.11.0-esp32-20220706/openocd-esp32/share/openocd/scripts",
+        "IDF_CCACHE_ENABLE": "1"
+    },
+    "idf.espIdfPathWin": "C:\\Users\\chris\\esp\\esp-idf",
+    "idf.openOcdConfigs": [
+        "board/esp32-wrover-kit-3.3v.cfg"
+    ],
+    "idf.portWin": "COM5",
+    "idf.pythonBinPathWin": "C:\\Users\\chris\\.espressif\\python_env\\idf4.4_py3.8_env\\Scripts\\python.exe",
+    "idf.toolsPathWin": "C:\\Users\\chris\\.espressif"
+}
+>>>>>>> 6efeb02 (Initial commit)
