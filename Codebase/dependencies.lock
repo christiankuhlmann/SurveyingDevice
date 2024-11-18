@@ -1,0 +1,57 @@
+dependencies:
+  espressif/esp-dsp:
+    component_hash: fa7fe74305df6da25867437ebcd4213e047cbfc0556cf92067ab657fce537c6e
+    dependencies:
+    - name: idf
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=4.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.5.2
+  espressif/esp_modem:
+    component_hash: 44a661e55cb7ea15a97152b1a5594bb764906cf79e03916f00d47aabccbb24c5
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.2.0
+  espressif/mdns:
+    component_hash: af6306fe65d637a3683d1cf671508fcedd6b05f9ca029a8815abeab64001fb8d
+    dependencies:
+    - name: idf
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.4.0
+  idf:
+    source:
+      type: idf
+    version: 5.1.5
+  joltwallet/littlefs:
+    component_hash: 362f1f5beb5087b0c60169aff82676d2d0ffc991ead975212b0cba95959181c5
+    dependencies:
+    - name: idf
+      registry_url: https://components.espressif.com
+      require: private
+      version: '>=4.3'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.14.8
+direct_dependencies:
+- espressif/esp-dsp
+- espressif/esp_modem
+- espressif/mdns
+- idf
+- joltwallet/littlefs
+manifest_hash: 464682bff9e45aae6f6ba67652cb24bcb40137cb722b9c76a723f04ec84f8b96
+target: esp32
+version: 2.0.0
