@@ -20,7 +20,7 @@ bool getCounter(const unsigned int fileID, unsigned int &counter)
     if (FileFuncs::readFromFile(fname,"counter",counter)){
         return true;
     }
-    Debug::debug(Debug::DEBUG_SENSOR,"Counter not found...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Counter not found...");
     return false;
 }
 void setCounter(const unsigned int fileID, const unsigned int &counter)
@@ -34,7 +34,7 @@ void saveShotData(const ShotData &sd, const unsigned int fileID)
 {
     char fname[FNAME_LENGTH];
     char varname[VARNAME_LENGTH];
-    Debug::debug(Debug::DEBUG_SENSOR,"Saving shot data to file...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Saving shot data to file...");
     getFileName(fileID,fname);
     Serial.printf("Namespace to write to: %s\n", fname);
 
@@ -42,7 +42,7 @@ void saveShotData(const ShotData &sd, const unsigned int fileID)
     // If file exists doesn't exist, create it with counter = 0
     if (!getCounter(fileID, counter))
     {
-        Debug::debug(Debug::DEBUG_SENSOR,"File doesn't exist, creating new one...");
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"File doesn't exist, creating new one...");
         counter = 0;
         setCounter(fileID, counter);
     } // Get latest shot ID
@@ -59,7 +59,7 @@ bool readShotData(ShotData &sd, unsigned int fileID, unsigned int shotID)
 {
     char fname[FNAME_LENGTH];
     char varname[VARNAME_LENGTH];
-    Debug::debug(Debug::DEBUG_SENSOR,"Reading shot data from file...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Reading shot data from file...");
     getFileName(fileID,fname);
     getVarName(shotID,varname);
     return FileFuncs::readFromFile(fname,varname,&sd,sizeof(ShotData));
@@ -67,7 +67,7 @@ bool readShotData(ShotData &sd, unsigned int fileID, unsigned int shotID)
 
 bool readShotData(ShotData &sd, unsigned int fileID)
 {
-    Debug::debug(Debug::DEBUG_SENSOR,"Reading latest shot data from file...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Reading latest shot data from file...");
     getCounter(fileID, counter); // Get latest shot ID
     return readShotData(sd,fileID,counter);
 }
@@ -77,17 +77,14 @@ SensorHandler::SensorHandler(Accelerometer &a, Magnetometer &m, Laser &l):acc(a)
 
 void SensorHandler::init()
 {
-    Debug::debug(Debug::DEBUG_SENSOR, "Acc init...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Acc init...");
     acc.init();
-    Debug::debug(Debug::DEBUG_SENSOR, "Mag init...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Mag init...");
     mag.init();
-    Debug::debug(Debug::DEBUG_SENSOR, "Las init...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Las init...");
     las.init();
 
-    Debug::debug(Debug::DEBUG_SENSOR, "Turning laser off...");
-    las.toggleLaser(false);
-
-    Debug::debug(Debug::DEBUG_SENSOR, "Loading calibration...");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading calibration...");
     loadCalibration();
 }
 
@@ -153,6 +150,7 @@ ShotData SensorHandler::getShotData(bool corrected)
 
 int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisation)
 {
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Starting to take shot...");
     if (use_stabilisation)
     {
         // Wait until device is steady
@@ -172,6 +170,7 @@ int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisati
         }
     }
 
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Stabilised...");
     // Take samples
     mag_data << 0,0,0;
     acc_data << 0,0,0;
@@ -182,6 +181,7 @@ int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisati
     }
     mag_data /= N_SHOT_SMAPLES;
     acc_data /= N_SHOT_SMAPLES;
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Data collected...");
 
     
     if (laser_reading) { las_data = las.getMeasurement(); }
@@ -203,7 +203,7 @@ int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisati
 
 
     
-    Debug::debugf(Debug::DEBUG_SENSOR,"Laser measurement: %f ", las_data);
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Laser measurement: %f ", las_data);
 
     las.toggleLaser(true);
 
@@ -253,6 +253,7 @@ int SensorHandler::collectStaticCalibData()
     // mag_align_data.col(mag_acc_align_progress) = getMagData();
     // acc_align_data.col(mag_acc_align_progress) = getAccData();
     static_calib_progress++;
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Static calibration progress %i/%i", static_calib_progress, N_ORIENTATIONS);
     return static_calib_progress;
 
 }
@@ -261,7 +262,7 @@ int SensorHandler::collectLaserCalibData()
     if (las_calib_progress >= N_LASER_CAL) { return N_LASER_CAL; }
 
     if (takeShot()) {
-        Debug::debug(Debug::DEBUG_SENSOR,"Shot failed! Try again.");
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Shot failed! Try again.");
         return las_calib_progress;
     }
 
@@ -269,6 +270,7 @@ int SensorHandler::collectLaserCalibData()
     laser_calib_data.mag_data.col(las_calib_progress) = mag_data;
     
     las_calib_progress++;
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Laser calibration progress %i/%i", las_calib_progress, N_LASER_CAL);
     return las_calib_progress;
 }
 
@@ -329,7 +331,7 @@ void SensorHandler::removePrevCalib(bool static_calib)
     // To implement
 }
 
-int SensorHandler::getCalibProgress(bool static_calib)
+int SensorHandler::getCalibProgress()
 {
     return static_calib_progress + las_calib_progress;
 }

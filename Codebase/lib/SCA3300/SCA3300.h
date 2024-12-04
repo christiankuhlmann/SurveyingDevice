@@ -128,7 +128,7 @@ class SCA3300 {
   private:
     SPIClass *_spiPort = NULL;  //The generic connection to user's chosen spi hardware
 
-    uint8_t sca3300_csPin = 33; // Default SPI chip select pin
+    uint8_t sca3300_csPin = 21; // Default SPI chip select pin
     uint8_t sca3300_mode = 4; // Default inclinometer mode
     uint8_t SCA3300_CMD, SCA3300_CRC;
     uint16_t SCA3300_DATA;

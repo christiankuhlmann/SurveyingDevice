@@ -27,8 +27,9 @@ const static int LIDAR_BUFFER_SIZE = 100;
 const static int LIDAR_MEAS_LEN = 6;
 const static uint8_t PIN_LASER_ENA = 26;
 
-// Current lidar laser status
-extern bool laser_on;
+static bool laser_on = true;
+static bool uart_timeout = false;
+static unsigned long SERIAL1_TIMEOUT_MS = 1000;
 
 // LIDAR message struct
 struct lidar_received_msg {
@@ -55,6 +56,8 @@ class LDK_2M {
 
         // Set specific laser mode
         void toggleLaser(bool mode);
+
+        void beep();
 
     private:
         // Holds a single character - used for reading single char from UART buffer until start bit received

@@ -5,12 +5,14 @@
 #include <NumericalMethods.h>
 #include "Sensors.h"
 #include <EigenFileFuncs.h>
-#include <debug.h>
+#include <debug_csd.h>
+
 
 #define FNAME_LENGTH 6
 #define VARNAME_LENGTH 4
 
 using namespace Eigen;
+// using namespace Debug_csd;
 
 // Define constants for general use
 
@@ -104,6 +106,7 @@ public:
     void saveCalibration();
     void loadCalibration();
     void removePrevCalib(bool static_calib);
+    int getCalibProgress();
     int getCalibProgress(bool static_calib);
     
     /**

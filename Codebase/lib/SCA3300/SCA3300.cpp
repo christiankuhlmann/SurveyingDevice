@@ -317,7 +317,7 @@ void SCA3300::endTransmission() {
 //Initialize the Arduino SPI library for the SCA3300 hardware
 void SCA3300::initSPI() {
   //Initialize the Arduino SPI library for the SCA3300 hardware
-  _spiPort->begin();
+  _spiPort->begin(5,19,18,4);
   // Maximum SPI frequency is 2 MHz - 4 MHz to achieve the best performance
   // initialize the chip select pin:
   pinMode(sca3300_csPin, OUTPUT);

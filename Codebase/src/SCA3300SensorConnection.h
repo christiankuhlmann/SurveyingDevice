@@ -3,7 +3,7 @@
 
 #include <CaveSurveyDevice.h>
 #include <SCA3300.h>
-#include <debug.h>
+#include <debug_csd.h>
 
 class SCA3300SensorConnection: public Accelerometer
 {
@@ -19,12 +19,12 @@ SCA3300SensorConnection::SCA3300SensorConnection(SCA3300& sca3300):sca3300_conne
 
 void SCA3300SensorConnection::init()
 {
-    if (sca3300_connection.begin() != 0x51) {Debug::debug(Debug::DEBUG_ACCEL,"Accelerometer initialisation failed!"); }
+    if (sca3300_connection.begin() != true) {Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Accelerometer initialisation failed!"); }
 }
 
 Vector3f SCA3300SensorConnection::getMeasurement()
 {
-    Debug::debug(Debug::DEBUG_ACCEL,"Getting measurement...");
+    Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Getting measurement...");
     Eigen::Vector3f data;
     bool available = false;
 
@@ -36,6 +36,7 @@ Vector3f SCA3300SensorConnection::getMeasurement()
         }
     }
 
+    Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Requesting data...");
     data <<
     (float)sca3300_connection.getCalculatedAccelerometerX(),
     -(float)sca3300_connection.getCalculatedAccelerometerY(),

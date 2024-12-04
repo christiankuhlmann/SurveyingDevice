@@ -3,7 +3,7 @@
 #define HEADER_DEBUG_CSD
 
 #include <Arduino.h>
-namespace Debug {
+namespace Debug_csd {
 
 const static bool DEBUG = false;
 const static bool DEBUG_LASER_CAL = true;

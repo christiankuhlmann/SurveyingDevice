@@ -12,6 +12,7 @@ public:
     float getMeasurement();
     void toggleLaser();
     void toggleLaser(bool mode);
+    void beep();
 private:
     LDK_2M &LDK2M_connection;
 };
@@ -21,6 +22,11 @@ LDK2MSensorConnection::LDK2MSensorConnection(LDK_2M &ldk2m): LDK2M_connection(ld
 void LDK2MSensorConnection::init()
 {
     LDK2M_connection.init();
+}
+
+void LDK2MSensorConnection::beep()
+{
+    LDK2M_connection.beep();
 }
 
 float LDK2MSensorConnection::getMeasurement()

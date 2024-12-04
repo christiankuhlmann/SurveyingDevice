@@ -4,11 +4,12 @@
 #include <Arduino.h>
 // #include "soc/rtc_wdt.h"
 #include "utils.h"
-#include <debug.h>
 #include <inttypes.h>
 #include <freertos/task.h>
-
-using namespace Debug;
+#include <debug_csd.h>
+#include "config.h"
+#include "display_funcs.h"
+#include "programflow.h"
 
 // #define configTASK_NOTIFICATION_ARRAY_ENTRIES 5
 
@@ -104,6 +105,10 @@ static DeviceStateEnum current_mode;
 static DeviceStateEnum next_mode;
 static DisplayModeEnum display_mode;
 
+/****************************************************************
+ * Globals
+ ****************************************************************/
+static int calib_progress = 0;
 
 /****************************************************************
  * Interrupt handlers
@@ -114,31 +119,31 @@ void IRAM_ATTR displayTimerISR()
 }
 void IRAM_ATTR B1Interrupt()
 {
-    // debug(DEBUG_ALWAYS,"B1_INTERRUPT");
+    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B1_INTERRUPT");
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B1,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyIndexedFromISR(inputhandler_task,ID_B1,(uint32_t)0x10,eSetValueWithOverwrite,NULL);
 }
 void IRAM_ATTR B2Interrupt()
 {
-    // debug(DEBUG_ALWAYS,"B2_INTERRUPT");
+    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B2_INTERRUPT");
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B2,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyIndexedFromISR(inputhandler_task,ID_B2,(uint32_t)0x10,eSetValueWithOverwrite,NULL);
 }
 void IRAM_ATTR B3Interrupt()
 {
-    // debug(DEBUG_ALWAYS,"B3_INTERRUPT");
+    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B3_INTERRUPT");
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B3,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyIndexedFromISR(inputhandler_task,ID_B3,(uint32_t)0x10,eSetValueWithOverwrite,NULL);
 }
 void IRAM_ATTR B4Interrupt()
 {
-    // debug(DEBUG_ALWAYS,"B4_INTERRUPT");
+    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B4_INTERRUPT");
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B4,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyIndexedFromISR(inputhandler_task,ID_B4,(uint32_t)0x10,eSetValueWithOverwrite,NULL);
 }
 void IRAM_ATTR B5Interrupt()
 {
-    // debug(DEBUG_ALWAYS,"B5_INTERRUPT");
+    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B5_INTERRUPT");
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B5,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyIndexedFromISR(inputhandler_task,ID_B5,(uint32_t)0x10,eSetValueWithOverwrite,NULL);
 }
@@ -159,7 +164,6 @@ void enableRisingInterrupts()
     attachInterrupt(PIN_BUTTON4,B4Interrupt,RISING);
     attachInterrupt(PIN_BUTTON5,B5Interrupt,RISING);
 }
-
 void enableFallingInterrupts()
 {
     {
@@ -175,7 +179,6 @@ void enableFallingInterrupts()
     attachInterrupt(PIN_BUTTON5,B5Interrupt,FALLING);
 }
 }
-
 void initInterrupts()
 {
     pinMode(PIN_BUTTON1,INPUT_PULLUP);
@@ -189,7 +192,6 @@ void initInterrupts()
     attachInterrupt(PIN_BUTTON4,B4Interrupt,RISING);
     attachInterrupt(PIN_BUTTON5,B5Interrupt,RISING);
 }
-
 void clearInputHandlerEvents(){
     xTaskNotifyStateClear(inputhandler_task);
     xTaskNotifyStateClearIndexed(inputhandler_task,1);
@@ -197,7 +199,6 @@ void clearInputHandlerEvents(){
     xTaskNotifyStateClearIndexed(inputhandler_task,3);
     xTaskNotifyStateClearIndexed(inputhandler_task,4);
     xTaskNotifyStateClearIndexed(inputhandler_task,5);
-
 }
 
 /****************************************************************
@@ -206,13 +207,25 @@ void clearInputHandlerEvents(){
 void extern laserOn();
 void extern laserOff();
 void extern takeShot();
-
+int extern getCalib();
+void extern saveCalib();
+void extern clearCalibration();
 
 /****************************************************************
  * Program flow FSM
  ****************************************************************/
 void executeAction(const uint32_t action)
 {
+    switch (action)
+    {
+        case ACTION_ON_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "On short"); break;
+        case ACTION_UP_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Up short"); break;
+        case ACTION_DOWN_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Down short"); break;
+        case ACTION_MODE_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Mode short"); break;
+        case ACTION_OFF_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Off short"); break;
+
+    }
+
     switch (current_mode)
     {
         case MODE_IDLE:
@@ -220,10 +233,11 @@ void executeAction(const uint32_t action)
         {
             next_mode = MODE_LASER_ON;
             display_mode = DISP_IDLE;
-            // laserOn();
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Laser on");
+            laserOn();
         } else if (action == ACTION_MODE_SHORT)
         {
-            debug(DEBUG_ALWAYS, "Switching mode to: HISTORY");
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: HISTORY");
             next_mode = MODE_HISTORY;
             display_mode = DISP_HISTORY;
         }
@@ -234,14 +248,16 @@ void executeAction(const uint32_t action)
         {
             next_mode = MODE_LASER_ON;
             display_mode = DISP_SHOT_TAKEN;
-            // takeShot();
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Taking shot");
+            takeShot();
         } else if (action == ACTION_OFF_SHORT) {
             next_mode = MODE_IDLE;
             display_mode = DISP_IDLE;
-            // laserOff();
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Laser off");
+            laserOff();
         } else if (action == ACTION_MODE_SHORT)
         {
-            debug(DEBUG_ALWAYS, "Switching mode to: HISTORY");
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: HISTORY");
             next_mode = MODE_HISTORY;
             display_mode = DISP_HISTORY;
         }
@@ -249,7 +265,7 @@ void executeAction(const uint32_t action)
 
         case MODE_HISTORY:
         if (action == ACTION_MODE_SHORT){
-            debug(DEBUG_ALWAYS, "Switching mode to: MENU");
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: MENU");
             next_mode = MODE_MENU;
             display_mode = DISP_MENU;
         }
@@ -257,15 +273,28 @@ void executeAction(const uint32_t action)
 
         case MODE_MENU:
         if (action == ACTION_MODE_SHORT){
-            debug(DEBUG_ALWAYS, "Switching mode to: CALIB");
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: CALIB");
             next_mode = MODE_CALIB;
             display_mode = DISP_CALIBRATION;
         }
         break;
 
         case MODE_CALIB:
+        if (action == ACTION_ON_SHORT)
+        {
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Getting calibration");
+            calib_progress = getCalib();
+            if (calib_progress >= (N_ORIENTATIONS + N_LASER_CAL))
+            {
+                display_mode = DISP_CALIB_SAVE;
+            } else if (calib_progress > N_ORIENTATIONS) {
+                display_mode = DISP_LASER_CALIB;
+            }
+        }
         if (action == ACTION_MODE_SHORT){
-            debug(DEBUG_ALWAYS, "Switching mode to: IDLE");
+            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: IDLE");
+            clearCalibration();
+            calib_progress = 0;
             next_mode = MODE_IDLE;
             display_mode = DISP_IDLE;
         }
@@ -293,6 +322,15 @@ void executeAction(const uint32_t action)
 
 void updateDisplay()
 {
+    switch (display_mode)
+    {
+    case DISP_IDLE:
+        displayIdle();
+        break;
+    
+    default:
+        break;
+    }
     xTaskNotifyFromISR( displayhandler_task,
                         0x00,
                         eSetValueWithOverwrite, 
@@ -317,15 +355,16 @@ void startDisplayTimer()
  ****************************************************************/
 void displayhandler(void* parameter)
 {
-    debug(DEBUG_ALWAYS,"Start displayhandler");
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start displayhandler");
     while(true)
     {
-        debug(DEBUG_OLED,"Displayhandler: Waiting for notify...\n");
+        Debug_csd::debug(Debug_csd::DEBUG_OLED,"Displayhandler: Waiting for notify...\n");
         xTaskNotifyWait(    0x00,      /* Don't clear any notification bits on entry. */
                             ULONG_MAX, /* Reset the notification value to 0 on exit. */
                             &displayhandlerNotifiedValue, /* Notified value pass out. */
                             portMAX_DELAY );  /* Block indefinitely. */
         updateDisplay();
+
     }
 }
 
@@ -334,11 +373,11 @@ void displayhandler(void* parameter)
  ****************************************************************/
 void inputhandler(void* parameter)
 {
-    debug(DEBUG_ALWAYS,"Start inputhandler");
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start inputhandler");
     while(true)
     {
 
-        debug(DEBUG_ALWAYS,"Eventhandler: Waiting for notify...\n");
+        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Eventhandler: Waiting for notify...\n");
         enableRisingInterrupts();
         xTaskNotifyWait(    0x00,      /* Don't clear any notification bits on entry. */
                             ULONG_MAX, /* Reset the notification value to 0 on exit. */
@@ -346,7 +385,7 @@ void inputhandler(void* parameter)
                             portMAX_DELAY );  /* Block indefinitely. */
         enableFallingInterrupts();
 
-        debug(DEBUG_ALWAYS,"Received interrupt...");
+        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Received interrupt...");
         clearInputHandlerEvents();
         xTaskNotifyWaitIndexed( buttonNumber, /* Index to wait on. */
                                 ULONG_MAX, /* Reset the notification value to 0 on entry. */
@@ -356,8 +395,8 @@ void inputhandler(void* parameter)
 
         // Set to 16 if released or set to 0 otherwise
         // Adding 16 to a button number will produce the long or short press where +16 = SHORT
-        if (inputhandlerNotifiedValue == 0x10) {debug(DEBUG_ALWAYS,"SHORT PRESS");}
-        else {debug(DEBUG_ALWAYS,"LONG PRESS");}
+        if (inputhandlerNotifiedValue == 0x10) {Debug_csd::debugf(Debug_csd::DEBUG_ALWAYS,"SHORT PRESS");}
+        else {Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"LONG PRESS");}
         inputhandlerNotifiedValue += buttonNumber; 
         xTaskNotify(computefunc_task, inputhandlerNotifiedValue, eSetValueWithOverwrite);
 
@@ -370,10 +409,10 @@ void inputhandler(void* parameter)
  ****************************************************************/
 void computehandler(void* parameter)
 {
-    debug(DEBUG_ALWAYS,"Start computehandler");
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start computehandler");
     while(true)
     {
-        debug(DEBUG_ALWAYS,"Computehandler: Waiting for notify...\n");
+        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Computehandler: Waiting for notify...\n");
         xTaskNotifyWait(    0x00,      /* Don't clear any notification bits on entry. */
                             ULONG_MAX, /* Reset the notification value to 0 on exit. */
                             &computefuncNotifiedValue, /* Notified value pass out. */

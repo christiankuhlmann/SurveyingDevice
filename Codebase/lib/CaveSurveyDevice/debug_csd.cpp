@@ -1,6 +1,6 @@
-#include "debug.h"
+#include "debug_csd.h"
 
-namespace Debug
+namespace Debug_csd
 {
 
 void debug(unsigned int mode, const char* str)

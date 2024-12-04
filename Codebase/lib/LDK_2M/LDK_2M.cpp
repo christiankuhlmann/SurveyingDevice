@@ -1,9 +1,5 @@
 #include "LDK_2M.h"
 #define DEBUG_LDK2M
-// Global laser status flag
-bool laser_on = true;
-bool uart_timeout = false;
-unsigned long SERIAL1_TIMEOUT_MS = 1000;
 
 // Utility functions
 void LDK_2M::flushSerial1()
@@ -41,6 +37,12 @@ float LDK_2M::toDistance(char* data)
         err_msg = data;
         return -1;
     }
+
+    #ifdef DEBUG_LDK2M
+    Serial.print("LDK2M:    Laser data: ");
+    Serial.println(data);
+    #endif
+    
     d = std::strtof(data,nullptr);
     d = d/1000.0;
 
@@ -51,6 +53,19 @@ float LDK_2M::toDistance(char* data)
 LDK_2M::LDK_2M()
 {   
 
+}
+
+void LDK_2M::beep()
+{
+    char generated_command[LIDAR_SEND_COMMAND_SIZE];
+    generateCommand(LIDAR_DISABLE_BEEPER,generated_command);
+    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
+    delay(100);
+    generateCommand(LIDAR_ENABLE_BEEPER,generated_command);
+    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
+    delay(100);
+    generateCommand(LIDAR_DISABLE_BEEPER,generated_command);
+    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
 }
 
 void LDK_2M::init()
@@ -77,33 +92,22 @@ void LDK_2M::init()
     flushSerial1();
     eraseBuffer();
 
-    generateCommand(LIDAR_LASER_ON,generated_command);
+    // toggleLaser(true);
+    delay(100);
+    toggleLaser(false);
+    delay(100);
+
+    generateCommand(LIDAR_DISABLE_BEEPER,generated_command);
     Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
-    delay(500);
-    generateCommand(LIDAR_LASER_OFF,generated_command);
+    delay(100);
+    generateCommand(LIDAR_ENABLE_BEEPER,generated_command);
     Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
-    delay(500);
-    generateCommand(LIDAR_LASER_ON,generated_command);
-    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
-    delay(500);
-    generateCommand(LIDAR_LASER_OFF,generated_command);
-    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
-    delay(500);
+    delay(100);
     generateCommand(LIDAR_DISABLE_BEEPER,generated_command);
     Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
 
     flushSerial1();
     eraseBuffer();
-
-    generateCommand(LIDAR_LASER_OFF,generated_command);
-    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
-
-    generateCommand(LIDAR_READ_SLAVE_ADDR,generated_command);
-    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
-
-    readMsgFromUart(buffer);
-    parseResponse(buffer, &received_msg);
-    Serial.printf("Slave address: %s\n", received_msg.data);
 
     generateCommand(LIDAR_READ_SOFTWARE_VERSION,generated_command);
     Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
@@ -115,23 +119,12 @@ void LDK_2M::init()
     #ifdef DEBUG_LDK2M
     Serial.println("LDK2M:    (Init 2/3) Disable beeper");
     #endif
-
-    flushSerial1();
-    eraseBuffer();
-
-    generateCommand(LIDAR_DISABLE_BEEPER,generated_command);
-    Serial1.write(generated_command,LIDAR_SEND_COMMAND_SIZE);
-
-    eraseBuffer();
-
     #ifdef DEBUG_LDK2M
     Serial.println("LDK2M:    (Init 3/3) Finished INIT");
     #endif
 
     flushSerial1();
     eraseBuffer();
-
-    toggleLaser(false);
 };
 
 bool LDK_2M::readMsgFromUart(char* buffer)
