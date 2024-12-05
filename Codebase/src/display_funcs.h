@@ -66,13 +66,15 @@ class DisplayHandler {
     void drawBattey(int batt_percentage);
     void init();
     void clearDisplay();
+    void clearHIData();
     void update();
     
-    void drawTriangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t x3, uint16_t y3,
-                    uint16_t colour, DOT_PIXEL linewidth, LINE_STYLE linestyle);
-    void drawCircleHelper(uint16_t cx, uint16_t cy, uint16_t r, uint8_t quadrant, bool filled = false);
+    // void drawTriangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t x3, uint16_t y3,
+    //                 uint16_t colour, DOT_PIXEL linewidth, LINE_STYLE linestyle);
+    // void drawCircleHelper(uint16_t cx, uint16_t cy, uint16_t r, uint8_t quadrant, bool filled = false);
+
     void displayTopBar(bool bluetooth, int battery_level, int status);
-    void drawCentered(String str, uint16_t cx, uint16_t cy,uint16_t size);
+    void drawCentered(String str, uint16_t cx, uint16_t cy, sFONT* font = &Font12);
     void drawStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5] = "");
     void drawLaserCalib(const float angle, const char centre_text[7], const char progress[5]);
     void drawCompass(uint16_t cx, uint16_t cy, uint16_t line_length, uint16_t arrow_length);

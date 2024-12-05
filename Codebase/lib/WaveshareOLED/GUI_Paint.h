@@ -219,6 +219,14 @@ void Paint_DrawLine(UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend, UWORD Co
 void Paint_DrawRectangle(UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend, UWORD Color, DOT_PIXEL Line_width, DRAW_FILL Draw_Fill);
 void Paint_DrawCircle(UWORD X_Center, UWORD Y_Center, UWORD Radius, UWORD Color, DOT_PIXEL Line_width, DRAW_FILL Draw_Fill);
 
+// Custom Implementations
+void drawCircleHelper(UWORD x0, UWORD y0, UWORD r,
+                                    uint8_t cornername, UWORD colour, DOT_PIXEL Line_width, DRAW_FILL Draw_Fill);
+void drawTriangle(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t x3, uint16_t y3,
+                    uint16_t colour, DOT_PIXEL linewidth, LINE_STYLE linestyle);
+void fillTriangle(UWORD x0, UWORD y0, UWORD x1, UWORD y1,
+                                UWORD x2, UWORD y2, UWORD colour, DOT_PIXEL line_width, LINE_STYLE line_style);
+
 //Display string
 void Paint_DrawChar(UWORD Xstart, UWORD Ystart, const char Acsii_Char, sFONT* Font, UWORD Color_Foreground, UWORD Color_Background);
 void Paint_DrawString_EN(UWORD Xstart, UWORD Ystart, const char * pString, sFONT* Font, UWORD Color_Foreground, UWORD Color_Background);

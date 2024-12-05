@@ -60,22 +60,40 @@ void clearCalibration()
     sh.resetCalibration();
 }
 
-
+uint16_t dummy_value = 0;
+float dummy_float = 0;
 void displayIdle()
 {
     sh.update();
 
-    dh.clearDisplay();
-    dh.drawHeading(sh.getShotData().HIR(0));
-    dh.drawInclination(sh.getShotData().HIR(1));
+    dh.clearHIData();
+    // dh.drawHeading(sh.getShotData().HIR(0));
+    // dh.drawInclination(sh.getShotData().HIR(1));]
+    dummy_value++;
+    dh.drawHeading(dummy_value);
+    dh.drawInclination(dummy_value);
     dh.update();
+
+    Driver_Delay_ms(500); 
+    dh.clearHIData();
+
+    dh.drawCentered(String("REEE"),(uint16_t)32,(uint16_t)32);
+    dh.update();
+
+    Driver_Delay_ms(500); 
+    dh.clearHIData();
+
+    dummy_float += 45;
+    dh.drawLaserCalib(DEG_TO_RAD*dummy_float, "reeee", "3/12");
+
+    dh.update();
+    Driver_Delay_ms(1000); 
 }
 
 void initDisplayHandler()
 {
     dh.init();
     dh.clearDisplay();
-    dh.drawHeading(10.54);
-    dh.drawInclination(-118.2);
     dh.update();
+    
 }
