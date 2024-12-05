@@ -40,16 +40,26 @@ enum CompassDirection
 
 const char directionsArr[10][11] 
 {
-  "   NORTH  ",
-  "NORTH EAST",
-  "   EAST   ",
-  "SOUTH EAST",
-  "   SOUTH  ",
-  "SOUTH WEST",
-  "   WEST   ",
-  "NORTH WEST",
-  "    UP    ",
-  "   DOWN   "
+//   "   NORTH  ",
+//   "NORTH EAST",
+//   "   EAST   ",
+//   "SOUTH EAST",
+//   "   SOUTH  ",
+//   "SOUTH WEST",
+//   "   WEST   ",
+//   "NORTH WEST",
+//   "    UP    ",
+//   "   DOWN   "
+  "   North  ",
+  "North East",
+  "   East   ",
+  "South East",
+  "   South  ",
+  "South West",
+  "   West   ",
+  "North West",
+  "    Up    ",
+  "   Down   "
 };
 
 

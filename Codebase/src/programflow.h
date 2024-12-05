@@ -65,27 +65,25 @@ float dummy_float = 0;
 void displayIdle()
 {
     sh.update();
-
-    dh.clearHIData();
+    dh.clearDisplay();
     // dh.drawHeading(sh.getShotData().HIR(0));
     // dh.drawInclination(sh.getShotData().HIR(1));]
     dummy_value++;
     dh.drawHeading(dummy_value);
     dh.drawInclination(dummy_value);
     dh.update();
-
     Driver_Delay_ms(500); 
-    dh.clearHIData();
 
-    dh.drawCentered(String("REEE"),(uint16_t)32,(uint16_t)32);
-    dh.update();
 
-    Driver_Delay_ms(500); 
-    dh.clearHIData();
-
+    dh.clearDisplay();
     dummy_float += 45;
+    dummy_float = fmod(dummy_float,360);
     dh.drawLaserCalib(DEG_TO_RAD*dummy_float, "reeee", "3/12");
+    dh.update();
+    Driver_Delay_ms(1000); 
 
+    dh.clearDisplay();  
+    dh.drawStaticCalib(OLED::CompassDirection::EAST,OLED::CompassDirection::NORTH,"3/12");
     dh.update();
     Driver_Delay_ms(1000); 
 }

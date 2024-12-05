@@ -77,36 +77,34 @@ void DisplayHandler::drawDistance(float distance) {
     Paint_DrawString_EN(X_MARGIN, DISTANCE_LOCATION_Y, disp_str, &Font12, WHITE, WHITE);
 }
 
-
-
 void DisplayHandler::drawCompass(uint16_t cx, uint16_t cy, uint16_t line_length, uint16_t arrow_length) {
 	// display.fillRect(0, 0, SCREEN_WIDTH, 28, SH110X_WHITE);
-	Paint_DrawLine(cx-line_length,cy, cx+line_length, cy, WHITE, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
-	Paint_DrawLine(cx,cy-line_length, cx, cy+line_length, WHITE, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+	Paint_DrawLine(cx-line_length,cy, cx+line_length, cy, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+	Paint_DrawLine(cx,cy-line_length, cx, cy+line_length, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 
 	// North Triangle
-	drawTriangle( 	cx,cy+line_length,
-                    cx-arrow_length,cy+line_length-arrow_length,
-                    cx+arrow_length,cy+line_length-arrow_length,
-                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
-
-	// South Triangle
-	drawTriangle( 	cx,cy-line_length,
+	fillTriangle( 	cx,cy-line_length,
                     cx-arrow_length,cy-line_length+arrow_length,
                     cx+arrow_length,cy-line_length+arrow_length,
-                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+                    
+	// North Triangle
+	fillTriangle( 	cx,cy+line_length,
+                    cx-arrow_length,cy+line_length-arrow_length,
+                    cx+arrow_length,cy+line_length-arrow_length,
+                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 
 	// East Triangle
-	drawTriangle( 	cx+line_length,cy,
+	fillTriangle( 	cx+line_length,cy,
                     cx+line_length-arrow_length,cy-arrow_length,
                     cx+line_length-arrow_length,cy+arrow_length,
-                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 
   // West Triangle
-	drawTriangle( 	cx-line_length,cy,
+	fillTriangle( 	cx-line_length,cy,
                     cx-line_length+arrow_length,cy-arrow_length,
                     cx-line_length+arrow_length,cy+arrow_length,
-                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_DOTTED);
+                    WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 }
 
 void DisplayHandler::drawCentered(String str, uint16_t cx, uint16_t cy, sFONT *font)
@@ -116,136 +114,99 @@ void DisplayHandler::drawCentered(String str, uint16_t cx, uint16_t cy, sFONT *f
     // Serial.printf("X: %i, Y: %i\n", (int)(cx - (uint16_t)((str.length()/2.0)*xsize)), (int)(cy - (uint16_t)(ysize/2)), str.c_str());
     Paint_DrawString_EN(cx - ((str.length()/2.0)*xsize), cy-(uint16_t)(ysize/2), str.c_str(), font, WHITE, WHITE);
 }
-
-// void DisplayHandler::drawCircleHelper(uint16_t cx, uint16_t cy, uint16_t r, uint8_t quadrant, bool filled)
-// {
-//     if (!filled) Paint_DrawCircle(cx, cy, r, WHITE, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
-//     else Paint_DrawCircle(cx, cy, r, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-
-//     switch (quadrant)
-//     {
-//     case 1: // Top right
-//         Paint_DrawRectangle(cx, cy ,cx-r, cy-r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Top Left
-//         Paint_DrawRectangle(cx, cy ,cx+r, cy+r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Bottom Right
-//         Paint_DrawRectangle(cx, cy ,cx-r, cy+r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Bottom Left
-//         break;
-//     case 2: // Bottom right
-//         Paint_DrawRectangle(cx, cy ,cx-r, cy-r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Top Left
-//         Paint_DrawRectangle(cx, cy ,cx+r, cy-r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Top Right
-//         Paint_DrawRectangle(cx, cy ,cx-r, cy+r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Bottom Left
-//         break;
-//     case 3: // Bottom left
-//         Paint_DrawRectangle(cx, cy ,cx-r, cy-r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Top Left
-//         Paint_DrawRectangle(cx, cy ,cx+r, cy-r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Top Right
-//         Paint_DrawRectangle(cx, cy ,cx+r, cy+r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Bottom Right
-//         break;
-//     case 4: // Top left
-//         Paint_DrawRectangle(cx, cy ,cx+r, cy-r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Top Right
-//         Paint_DrawRectangle(cx, cy ,cx+r, cy+r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Bottom Right
-//         Paint_DrawRectangle(cx, cy ,cx-r, cy+r, BLACK, DOT_PIXEL_1X1, DRAW_FILL_FULL); // Bottom Left
-//         break;
-//     default:
-//         break;
-//     }
-    
-    
-
-// }
-
+   
 void DisplayHandler::drawStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5])
 {
-	String str1("CALIB ");
-	String str2(progress);
-	String str3 = str1 + str2;
 
-	Paint_DrawRectangle(0, 0, SCREEN_WIDTH, 28, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-	drawCentered(str3.c_str(),SCREEN_WIDTH/2,7,&Font8);
+	// Paint_DrawRectangle(0, 0, SCREEN_WIDTH, TOP_BAR_HEIGHT, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+    drawCentered(String("ABCDEFJ"),SCREEN_WIDTH/2,7, &Font12);
+	drawCentered(String(progress),SCREEN_WIDTH/2,20, &Font12);
+    // drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT + Font8.Height,&Font8);
+	// drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT + Font8.Height*2+2,&Font8);
 
-	drawCentered("Pointing",SCREEN_WIDTH/4,25,&Font8);
-	drawCentered(directionsArr[(int)pointing],SCREEN_WIDTH/4,40,&Font8);
+	// drawCentered("Pointing",                    SCREEN_WIDTH/2, 30,                  &Font8);
+	// drawCentered(directionsArr[(int)pointing],  SCREEN_WIDTH/2, 30+Font8.Height+2,   &Font8);
+    drawCentered("Pointing",                    SCREEN_WIDTH/2, 37,                  &Font12);
+	drawCompassDirection(                       3*SCREEN_WIDTH/8, 62,                13,2,pointing);
+    drawCentered("SE",                          3*SCREEN_WIDTH/4, 62-3,              &Font12);
 
-	drawCompassDirection(SCREEN_WIDTH/4,90,28,3,pointing);
+	// drawCentered("Facing",                      SCREEN_WIDTH/2, 85,                  &Font8);
+	// drawCentered(directionsArr[(int)facing],    SCREEN_WIDTH/2, 85+Font8.Height+2,   &Font8);
+    drawCentered("Facing",                      SCREEN_WIDTH/2, 85,                  &Font12);
+	drawCompassDirection(                       3*SCREEN_WIDTH/8, 110,               13,2,facing);
+    drawCentered("NW",                          3*SCREEN_WIDTH/4, 110-3,             &Font12);
 
-	drawCentered("Facing",3*SCREEN_WIDTH/4,25,&Font8);
-	drawCentered(directionsArr[(int)facing],3*SCREEN_WIDTH/4,40,&Font8);
-
-	drawCompassDirection(3*SCREEN_WIDTH/4,90,28,3,facing);
 }
 
 void DisplayHandler::drawLaserCalib(const float angle, const char centre_text[7], const char progress[5])
 {
-	const uint16_t radius = 10;
+	const uint16_t radius = 15;
 	Point center(canvas_center_x,canvas_center_y); // Centre point of the canvas
 	Point p_default(center.x,center.y-radius); // Top of circle
-	Point p_start(center.x,center.y-(radius+10)); // Start point for lines to be drawn
-	Point p_end(center.x,center.y-(radius+10)); // End point for lines to be drawn
+	Point p_start(center.x,center.y-(radius+10)); // Top of circle
+	Point p_end(center.x,center.y-(radius+10)); // Top of circle
 
-	int quad = floor(fmod(angle,M_2_PI)*0.95/M_PI_2);
+	// int quad = floor(fmod(angle,M_2_PI)*0.95/M_PI_2);
+    int quad = floor(angle*0.975/M_PI_2);
 	Serial.println(quad);
 
-	p_start = rotatePoint(p_start,center.x,center.y,angle);
-	p_end = rotatePoint(p_end,center.x,center.y,(quad+1)*M_PI_2);
-	
-	switch (quad){
+    if (angle < 10 *DEG_TO_RAD) quad = 4;
 
-		case 3:
-			// Draw quadrant 4
-			drawCircleHelper(center.x,center.y,radius,0x1,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
+    switch (quad){
 
-		case 2:
-			// Draw quadrant 3
-			drawCircleHelper(center.x,center.y,radius,0x8,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
+        case 4:
+            Paint_DrawCircle(center.x,center.y,radius,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
+        break;
 
-		case 1:
-			// Draw quadrant 2
-			drawCircleHelper(center.x,center.y,radius,0x4,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
+        case 3:
+            // Draw quadrant 4
+            Paint_DrawPoint(center.x-radius,center.y,WHITE,DOT_PIXEL_1X1,DOT_STYLE_DFT);
+            drawCircleHelper(center.x,center.y,radius,0x1,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
 
-		case 0:
-			// Draw quadrant 1
-			drawCircleHelper(center.x,center.y,radius,0x2,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
+        case 2:
+            // Draw quadrant 3
+            Paint_DrawPoint(center.x,center.y+radius,WHITE,DOT_PIXEL_1X1,DOT_STYLE_DFT);
+            drawCircleHelper(center.x,center.y,radius,0x8,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
 
-		default:
-		break;
-	}
+        case 1:
+            // Draw quadrant 2
+            Paint_DrawPoint(center.x+radius,center.y,WHITE,DOT_PIXEL_1X1,DOT_STYLE_DFT);
+            drawCircleHelper(center.x,center.y,radius,0x4,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
 
-	drawTriangle(center.x,center.y, p_start.x,p_start.y, p_end.x, p_end.y, BLACK, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+        case 0:
+            // Draw quadrant 1
+            Paint_DrawPoint(center.x,center.y-radius,WHITE,DOT_PIXEL_1X1,DOT_STYLE_DFT);
+            drawCircleHelper(center.x,center.y,radius,0x2,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
 
-	uint16_t arrow_length = 5;
+            p_start = rotatePoint(p_start,center.x,center.y,angle);
+            p_end = rotatePoint(p_end,center.x,center.y,(quad+1)*M_PI_2);
+            fillTriangle(center.x,center.y, p_start.x,p_start.y, p_end.x, p_end.y, BLACK, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+            uint16_t arrow_length = 7;
 
-    // Draw arrow at end of direction line
-	p_start.x = p_default.x;
-	p_start.y = p_default.y;
-	p_end.x = p_start.x - (uint16_t)((float)arrow_length / M_SQRT2);
-	p_end.y = p_start.y + (uint16_t)((float)arrow_length / M_SQRT2);
-	p_end = rotatePoint(p_end,center.x,center.y,angle);
-	p_start = rotatePoint(p_start,center.x,center.y,angle);
-	Paint_DrawLine(p_start.x, p_start.y, p_end.x, p_end.y, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+            // Draw arrow at end of direction line
+            p_start.x = p_default.x;
+            p_start.y = p_default.y;
+            p_end.x = p_start.x - (uint16_t)((float)arrow_length / M_SQRT2);
+            p_end.y = p_start.y + (uint16_t)((float)arrow_length / M_SQRT2);
+            p_end = rotatePoint(p_end,center.x,center.y,angle);
+            p_start = rotatePoint(p_start,center.x,center.y,angle);
+            Paint_DrawLine(p_start.x, p_start.y, p_end.x, p_end.y, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 
-    // Serial.printf("p_start: %" PRIu16 " %" PRIu16 "\np_end: %" PRIu16 " %" PRIu16 "\n",
-    // p_default.x, p_default.y, p_default.x - (uint16_t)((float)arrow_length / M_SQRT2), p_default.y + (uint16_t)((float)arrow_length / M_SQRT2));
-    
-    // Debug
-    // Serial.printf("p_start_rot: %" PRIu16 " %" PRIu16 "\np_end_rot: %" PRIu16 " %" PRIu16 "\n",
-    // p_start.x, p_start.y, p_end.x, p_end.y);
+            p_start.x = p_default.x;
+            p_start.y = p_default.y;
+            p_end.x = p_start.x - (uint16_t)((float)arrow_length / M_SQRT2 * 1.4);
+            p_end.y = p_start.y - (uint16_t)((float)arrow_length / M_SQRT2 * 0.6);
+            p_end = rotatePoint(p_end,center.x,center.y,angle);
+            p_start = rotatePoint(p_start,center.x,center.y,angle);
+            Paint_DrawLine(p_start.x, p_start.y, p_end.x, p_end.y, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+        break;
+    }
 
-	p_start.x = p_default.x;
-	p_start.y = p_default.y;
-	p_end.x = p_start.x - (uint16_t)((float)arrow_length / M_SQRT2 * 1.4);
-	p_end.y = p_start.y - (uint16_t)((float)arrow_length / M_SQRT2 * 0.6);
-	p_end = rotatePoint(p_end,center.x,center.y,angle);
-	p_start = rotatePoint(p_start,center.x,center.y,angle);
-	Paint_DrawLine(p_start.x, p_start.y, p_end.x, p_end.y, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
-
-    // Debug
-    // Serial.printf("p_start_rot: %" PRIu16 " %" PRIu16 "\np_end_rot: %" PRIu16 " %" PRIu16 "\n",
-    // p_start.x, p_start.y, p_end.x, p_end.y);
-
-    // Serial.printf("Paint width: %" PRIu16 " %" PRIu16 " \n", Paint.Width, Paint.Height);
-
-	String str1("CALIB");
-	drawCentered(String(str1),SCREEN_WIDTH/2,TOP_BAR_HEIGHT,&Font12);
-	String str2(progress);
-	drawCentered(String(str2),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+Font12.Height+2,&Font12);
+	drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT,&Font12);
+	drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+Font12.Height+2,&Font12);
+    char str_contents [4];
+    sprintf(str_contents,"%03.0f",RAD_TO_DEG*angle);
+	drawCentered(String(str_contents),center.x,center.y-3,&Font12);
 }
 
 void DisplayHandler::drawCompassDirection(uint16_t cx, uint16_t cy, uint16_t line_length, uint16_t arrow_length, CompassDirection direction)
@@ -469,7 +430,7 @@ void DisplayHandler::clearDisplay() {
 void DisplayHandler::clearHIData()
 {
     Paint_Clear(BLACK);  
-    Paint_DrawRectangle(X_MARGIN,HEADING_LOCATION_Y,64,DISTANCE_LOCATION_Y,BLACK,DOT_PIXEL_1X1,DRAW_FILL_FULL);
+    // Paint_DrawRectangle(X_MARGIN,HEADING_LOCATION_Y,64,DISTANCE_LOCATION_Y,BLACK,DOT_PIXEL_1X1,DRAW_FILL_FULL);
     // OLED_2IN42_Display(BlackImage);
 }
 
