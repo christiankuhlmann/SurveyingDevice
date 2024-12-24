@@ -115,11 +115,11 @@ void DisplayHandler::drawCentered(String str, uint16_t cx, uint16_t cy, sFONT *f
     Paint_DrawString_EN(cx - ((str.length()/2.0)*xsize), cy-(uint16_t)(ysize/2), str.c_str(), font, WHITE, WHITE);
 }
    
-void DisplayHandler::drawStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5])
+void DisplayHandler::displayStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5])
 {
 
 	// Paint_DrawRectangle(0, 0, SCREEN_WIDTH, TOP_BAR_HEIGHT, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-    drawCentered(String("ABCDEFJ"),SCREEN_WIDTH/2,7, &Font12);
+    drawCentered(String("Calib"),SCREEN_WIDTH/2,7, &Font12);
 	drawCentered(String(progress),SCREEN_WIDTH/2,20, &Font12);
     // drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT + Font8.Height,&Font8);
 	// drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT + Font8.Height*2+2,&Font8);
@@ -128,17 +128,17 @@ void DisplayHandler::drawStaticCalib(CompassDirection pointing, CompassDirection
 	// drawCentered(directionsArr[(int)pointing],  SCREEN_WIDTH/2, 30+Font8.Height+2,   &Font8);
     drawCentered("Pointing",                    SCREEN_WIDTH/2, 37,                  &Font12);
 	drawCompassDirection(                       3*SCREEN_WIDTH/8, 62,                13,2,pointing);
-    drawCentered("SE",                          3*SCREEN_WIDTH/4, 62-3,              &Font12);
+    drawCentered(directionsArr[(int)pointing],  3*SCREEN_WIDTH/4, 62-3,              &Font12);
 
 	// drawCentered("Facing",                      SCREEN_WIDTH/2, 85,                  &Font8);
 	// drawCentered(directionsArr[(int)facing],    SCREEN_WIDTH/2, 85+Font8.Height+2,   &Font8);
     drawCentered("Facing",                      SCREEN_WIDTH/2, 85,                  &Font12);
 	drawCompassDirection(                       3*SCREEN_WIDTH/8, 110,               13,2,facing);
-    drawCentered("NW",                          3*SCREEN_WIDTH/4, 110-3,             &Font12);
+    drawCentered(directionsArr[(int)facing],    3*SCREEN_WIDTH/4, 110-3,             &Font12);
 
 }
 
-void DisplayHandler::drawLaserCalib(const float angle, const char centre_text[7], const char progress[5])
+void DisplayHandler::displayLaserCalib(const float angle_deg, const char progress[5])
 {
 	const uint16_t radius = 15;
 	Point center(canvas_center_x,canvas_center_y); // Centre point of the canvas
@@ -147,10 +147,10 @@ void DisplayHandler::drawLaserCalib(const float angle, const char centre_text[7]
 	Point p_end(center.x,center.y-(radius+10)); // Top of circle
 
 	// int quad = floor(fmod(angle,M_2_PI)*0.95/M_PI_2);
-    int quad = floor(angle*0.975/M_PI_2);
+    int quad = floor(angle_deg*0.975/90);
 	Serial.println(quad);
 
-    if (angle < 10 *DEG_TO_RAD) quad = 4;
+    if (angle_deg < 10) quad = 4;
 
     switch (quad){
 
@@ -178,7 +178,7 @@ void DisplayHandler::drawLaserCalib(const float angle, const char centre_text[7]
             Paint_DrawPoint(center.x,center.y-radius,WHITE,DOT_PIXEL_1X1,DOT_STYLE_DFT);
             drawCircleHelper(center.x,center.y,radius,0x2,WHITE,DOT_PIXEL_1X1,DRAW_FILL_EMPTY);
 
-            p_start = rotatePoint(p_start,center.x,center.y,angle);
+            p_start = rotatePoint(p_start,center.x,center.y,DEG_TO_RAD*angle_deg);
             p_end = rotatePoint(p_end,center.x,center.y,(quad+1)*M_PI_2);
             fillTriangle(center.x,center.y, p_start.x,p_start.y, p_end.x, p_end.y, BLACK, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
             uint16_t arrow_length = 7;
@@ -188,16 +188,16 @@ void DisplayHandler::drawLaserCalib(const float angle, const char centre_text[7]
             p_start.y = p_default.y;
             p_end.x = p_start.x - (uint16_t)((float)arrow_length / M_SQRT2);
             p_end.y = p_start.y + (uint16_t)((float)arrow_length / M_SQRT2);
-            p_end = rotatePoint(p_end,center.x,center.y,angle);
-            p_start = rotatePoint(p_start,center.x,center.y,angle);
+            p_end = rotatePoint(p_end,center.x,center.y,DEG_TO_RAD*angle_deg);
+            p_start = rotatePoint(p_start,center.x,center.y,DEG_TO_RAD*angle_deg);
             Paint_DrawLine(p_start.x, p_start.y, p_end.x, p_end.y, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 
             p_start.x = p_default.x;
             p_start.y = p_default.y;
             p_end.x = p_start.x - (uint16_t)((float)arrow_length / M_SQRT2 * 1.4);
             p_end.y = p_start.y - (uint16_t)((float)arrow_length / M_SQRT2 * 0.6);
-            p_end = rotatePoint(p_end,center.x,center.y,angle);
-            p_start = rotatePoint(p_start,center.x,center.y,angle);
+            p_end = rotatePoint(p_end,center.x,center.y,DEG_TO_RAD*angle_deg);
+            p_start = rotatePoint(p_start,center.x,center.y,DEG_TO_RAD*angle_deg);
             Paint_DrawLine(p_start.x, p_start.y, p_end.x, p_end.y, WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
         break;
     }
@@ -205,7 +205,7 @@ void DisplayHandler::drawLaserCalib(const float angle, const char centre_text[7]
 	drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT,&Font12);
 	drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+Font12.Height+2,&Font12);
     char str_contents [4];
-    sprintf(str_contents,"%03.0f",RAD_TO_DEG*angle);
+    sprintf(str_contents,"%03.0f", angle_deg);
 	drawCentered(String(str_contents),center.x,center.y-3,&Font12);
 }
 
@@ -303,82 +303,82 @@ void DisplayHandler::drawCompassDirection(uint16_t cx, uint16_t cy, uint16_t lin
 	}
 }
 
-// void DisplayHandler::displayYN(const char prompt[11], bool YN)
-// {
+void DisplayHandler::displayYN(const char prompt_top[11], const char prompt_btm[11], bool YN)
+{
 
-// 	const int prompt_height = canvas_center_y - 30;
-// 	const int selector_height = canvas_center_y;
+	const int prompt_height = canvas_center_y - 40;
+	const int selector_height = canvas_center_y + 7;
 
-// 	// String str(prompt);
-// 	drawCentered(prompt,canvas_center_x,prompt_height,2);
+	// String str(prompt);
+	drawCentered(prompt_top,canvas_center_x,prompt_height);
+	drawCentered(prompt_btm,canvas_center_x,prompt_height+18);
 
-// 	if (YN)
-// 	{
-// 		display.fillRect(	canvas_center_x - 60, selector_height - 15,
-// 							50, 30,
-// 							SH110X_WHITE);
+	if (YN)
+	{
+		Paint_DrawRectangle(canvas_center_x - 60, selector_height - 15,
+							50, 30,
+							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
-// 		display.fillRect(	canvas_center_x - 58,selector_height - 13,
-// 							46, 26,
-// 							SH110X_BLACK);
+		Paint_DrawRectangle(canvas_center_x - 58,selector_height - 13,
+							46, 26,
+							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
-// 		drawCentered("YES",canvas_center_x - 34, selector_height-1, 2);
-// 		drawCentered("NO",canvas_center_x + 34, selector_height-1, 2);
+		drawCentered("YES",canvas_center_x - 34, selector_height-1);
+		drawCentered("NO",canvas_center_x + 34, selector_height-1);
 
-// 	} else {
+	} else {
 
-// 		display.fillRect(	canvas_center_x + 8, selector_height - 15,
-// 							50, 30,
-// 							SH110X_WHITE);
+		Paint_DrawRectangle(	canvas_center_x + 8, selector_height - 15,
+							50, 30,
+							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
-// 		display.fillRect(	canvas_center_x + 10, selector_height - 13,
-// 							46, 26,
-// 							SH110X_BLACK);
+		Paint_DrawRectangle(	canvas_center_x + 10, selector_height - 13,
+							46, 26,
+							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
-// 		drawCentered("YES",canvas_center_x - 34, selector_height-1, 2);
-// 		drawCentered("NO",canvas_center_x + 34, selector_height-1, 2);
-// 	}
-// }
+		drawCentered("YES",canvas_center_x - 34, selector_height-1);
+		drawCentered("NO",canvas_center_x + 34, selector_height-1);
+	}
+}
 
-// void DisplayHandler::displayYN(const char prompt_top[11], const char prompt_btm[11], bool YN)
-// {
+void DisplayHandler::clearDisplay() {
+//    OLED_2IN42_Clear(); 
+   Paint_Clear(BLACK);  
+}
 
-// 	const int prompt_height = canvas_center_y - 40;
-// 	const int selector_height = canvas_center_y + 7;
+void DisplayHandler::clearHIData()
+{
+    Paint_Clear(BLACK);  
+    // Paint_DrawRectangle(X_MARGIN,HEADING_LOCATION_Y,64,DISTANCE_LOCATION_Y,BLACK,DOT_PIXEL_1X1,DRAW_FILL_FULL);
+    // OLED_2IN42_Display(BlackImage);
+}
 
-// 	// String str(prompt);
-// 	drawCentered(prompt_top,canvas_center_x,prompt_height,2);
-// 	drawCentered(prompt_btm,canvas_center_x,prompt_height+18,2);
+void DisplayHandler::update() {
+   OLED_2IN42_Display(BlackImage);
+}
 
-// 	if (YN)
-// 	{
-// 		display.fillRect(	canvas_center_x - 60, selector_height - 15,
-// 							50, 30,
-// 							SH110X_WHITE);
+void DisplayHandler::displayLoading(const char prompt_top[11], const char prompt_btm[11], int count)
+{
+	const int n_points = 10;
+	Point initial_point(canvas_center_x, canvas_center_y-10);
+	Point loading_dot(0,0);
 
-// 		display.fillRect(	canvas_center_x - 58,selector_height - 13,
-// 							46, 26,
-// 							SH110X_BLACK);
+	const int prompt_height = TOP_BAR_HEIGHT + 10;
 
-// 		drawCentered("YES",canvas_center_x - 34, selector_height-1, 2);
-// 		drawCentered("NO",canvas_center_x + 34, selector_height-1, 2);
+	drawCentered(prompt_top,canvas_center_x,prompt_height);
+	drawCentered(prompt_btm,canvas_center_x,prompt_height+12);
 
-// 	} else {
-
-// 		display.fillRect(	canvas_center_x + 8, selector_height - 15,
-// 							50, 30,
-// 							SH110X_WHITE);
-
-// 		display.fillRect(	canvas_center_x + 10, selector_height - 13,
-// 							46, 26,
-// 							SH110X_BLACK);
-
-// 		drawCentered("YES",canvas_center_x - 34, selector_height-1, 2);
-// 		drawCentered("NO",canvas_center_x + 34, selector_height-1, 2);
-// 	}
-// }
-
-
+	for (int i = 0; i<n_points; i++)
+	{
+		loading_dot = rotatePoint(initial_point, canvas_center_x, canvas_center_y+10, i%10 * M_PI/5);
+		if (i == count % n_points)
+		{
+			Paint_DrawCircle(loading_dot.x, loading_dot.y, 2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+		} else {
+			Paint_DrawCircle(loading_dot.x, loading_dot.y, 2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+		}
+	}
+}
 
 // void DisplayHandler::Sensor_cal_status(int sensor_status) {
 //   display.setTextSize(2);
@@ -386,6 +386,38 @@ void DisplayHandler::drawCompassDirection(uint16_t cx, uint16_t cy, uint16_t lin
 //   display.print(sensor_status);
 //   // display.display();
 // }
+
+void DisplayHandler::drawBattery(int batt_percentage) {
+	// Draw horizontal rectangle at top righ
+	static int battery_width = 18; // 5px per 5%
+	static int battery_height = TOP_BAR_HEIGHT - 4;
+	static int n_bars = 0;
+
+	// Body of battery
+	Paint_DrawRectangle(64 - battery_width - 6, 	4,
+						64 - 6,					 	TOP_BAR_HEIGHT - 4,
+						WHITE, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
+
+	// Tip of battery (8x4)
+	Paint_DrawRectangle(64 - 6, TOP_BAR_HEIGHT/2 - 2,
+						64 - 4, TOP_BAR_HEIGHT/2 + 2,
+						WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+
+
+	// Capacity of battery
+	if (batt_percentage > 10)
+	{
+		n_bars = batt_percentage / 25; // Rounded down bat/20;
+
+		for (int i=0; i<n_bars+1; i++)
+		{
+			Paint_DrawRectangle(64 - battery_width - 6 + 1 + i*4+1, 	6,
+								64 - battery_width - 6 + 1 + i*4 + 3, 	TOP_BAR_HEIGHT - 5,
+								WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+		}
+	}
+}
+
 
 // void DisplayHandler::drawBlutooth(bool ble_status)
 // {
@@ -408,56 +440,3 @@ void DisplayHandler::drawCompassDirection(uint16_t cx, uint16_t cy, uint16_t lin
 //     display.display();
 //   }
 // }
-
-// void DisplayHandler::drawBattery(int batt_percentage) {
-//   display.drawRect(90, 0, 32, 15, SH110X_WHITE);
-//   display.drawRect(122, 4, 3, 6, SH110X_WHITE);
-//   batt_level = (batt_percentage/100.00)*32;
-//   display.fillRect(90, 0, batt_level, 15, SH110X_WHITE);
-//   display.fillRect(91+batt_level, 1, 30-batt_level, 13, SH110X_BLACK);
-//   display.setTextSize(2);
-//   display.setCursor(50, 0);
-//   display.print(batt_percentage);
-//   display.print("%");
-//   display.display();
-// }
-
-void DisplayHandler::clearDisplay() {
-//    OLED_2IN42_Clear(); 
-   Paint_Clear(BLACK);  
-}
-
-void DisplayHandler::clearHIData()
-{
-    Paint_Clear(BLACK);  
-    // Paint_DrawRectangle(X_MARGIN,HEADING_LOCATION_Y,64,DISTANCE_LOCATION_Y,BLACK,DOT_PIXEL_1X1,DRAW_FILL_FULL);
-    // OLED_2IN42_Display(BlackImage);
-}
-
-void DisplayHandler::update() {
-   OLED_2IN42_Display(BlackImage);
-}
-
-void DisplayHandler::displayLoading(const char prompt_top[11], const char prompt_btm[11], int count)
-{
-	const int n_points = 10;
-	Point initial_point(canvas_center_x, canvas_center_y+3);
-	Point loading_dot(0,0);
-
-	const int prompt_height = canvas_center_y - 40;
-	const int selector_height = canvas_center_y + 7;
-
-	drawCentered(prompt_top,canvas_center_x,prompt_height,&Font12);
-	drawCentered(prompt_btm,canvas_center_x,prompt_height+18,&Font12);
-
-	for (int i = 0; i<n_points; i++)
-	{
-		loading_dot = rotatePoint(initial_point, canvas_center_x, canvas_center_y+22, i%10 * M_PI/5);
-		if (i == count % n_points)
-		{
-			Paint_DrawCircle(loading_dot.x, loading_dot.y, 3, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-		} else {
-			Paint_DrawCircle(loading_dot.x, loading_dot.y, 2, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-		}
-	}
-}

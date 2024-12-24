@@ -336,6 +336,17 @@ int SensorHandler::getCalibProgress()
     return static_calib_progress + las_calib_progress;
 }
 
+int SensorHandler::getCalibProgress(bool static_calib)
+{
+    if (static_calib)
+    {
+        return static_calib_progress;
+    } else {
+        return las_calib_progress;
+    }
+    
+}
+
 Vector3f SensorHandler::getMagData()
 {
     return mag_data;

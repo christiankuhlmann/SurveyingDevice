@@ -7,7 +7,7 @@ namespace OLED
 
 #define SCREEN_WIDTH 64  // OLED display width, in pixels
 #define SCREEN_HEIGHT 128 // OLED display height, in pixels
-#define TOP_BAR_HEIGHT 28
+#define TOP_BAR_HEIGHT 16
 
 #define WORD_SPACING 18
 #define X_MARGIN 5
@@ -38,7 +38,7 @@ enum CompassDirection
   DOWN
 };
 
-const char directionsArr[10][11] 
+const char directionsArr[10][3] 
 {
 //   "   NORTH  ",
 //   "NORTH EAST",
@@ -50,16 +50,26 @@ const char directionsArr[10][11]
 //   "NORTH WEST",
 //   "    UP    ",
 //   "   DOWN   "
-  "   North  ",
-  "North East",
-  "   East   ",
-  "South East",
-  "   South  ",
-  "South West",
-  "   West   ",
-  "North West",
-  "    Up    ",
-  "   Down   "
+  // "   North  ",
+  // "North East",
+  // "   East   ",
+  // "South East",
+  // "   South  ",
+  // "South West",
+  // "   West   ",
+  // "North West",
+  // "    Up    ",
+  // "   Down   "
+  "N ",
+  "NE",
+  "E ",
+  "SE",
+  "S ",
+  "SW",
+  "W ",
+  "NW",
+  "U ",
+  "D "
 };
 
 
@@ -73,7 +83,7 @@ class DisplayHandler {
     void drawInclination(float inclination);
     void drawSensorCalStatus(int sensor_status);
     void drawBlutooth(bool ble_status);
-    void drawBattey(int batt_percentage);
+    void drawBattery(int batt_percentage);
     void init();
     void clearDisplay();
     void clearHIData();
@@ -85,8 +95,8 @@ class DisplayHandler {
 
     void displayTopBar(bool bluetooth, int battery_level, int status);
     void drawCentered(String str, uint16_t cx, uint16_t cy, sFONT* font = &Font12);
-    void drawStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5] = "");
-    void drawLaserCalib(const float angle, const char centre_text[7], const char progress[5]);
+    void displayStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5] = "");
+    void displayLaserCalib(const float angle_deg, const char progress[5]);
     void drawCompass(uint16_t cx, uint16_t cy, uint16_t line_length, uint16_t arrow_length);
     void drawCompassDirection(uint16_t cx, uint16_t cy, uint16_t line_length, uint16_t arrow_length, CompassDirection direction);
     void displayOrientation();

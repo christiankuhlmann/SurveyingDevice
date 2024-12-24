@@ -81,7 +81,9 @@ enum DisplayModeEnum
     DISP_STATIC_CALIB,
 
     DISP_CALIB_SAVE,
-    DISP_CALIB_REM
+    DISP_CALIB_REM,
+
+    DISP_CALIB_LOADING
 };
 
 enum DeviceStateEnum
@@ -326,6 +328,22 @@ void updateDisplay()
     {
     case DISP_IDLE:
         displayIdle();
+        break;
+
+    case DISP_HISTORY:
+        displayHistory();
+        break;
+
+    case DISP_STATIC_CALIB:
+        displayStaticCalib(sh.getCalibProgress(true));
+        break;
+
+    case DISP_LASER_CALIB:
+        displayLaserCalib(sh.getCalibProgress(false));
+        break;
+
+    case DISP_CALIB_SAVE:
+        displayCalibSaveYN();
         break;
     
     default:
