@@ -3,22 +3,8 @@
 
 void setup()
 {
+
     Serial.begin(115200);
-
-    sh.init();
-    // rm3100.begin();
-    rm3100.update();
-    Serial.printf("Mag data: %f %f %f\n", rm3100.getX(),rm3100.getY(),rm3100.getZ());
-
-    sc_accelerometer.getMeasurement();
-    Serial.printf("Acc data: %lf %lf %lf\n", sca3300.getCalculatedAccelerometerX(),sca3300.getCalculatedAccelerometerY(),sca3300.getCalculatedAccelerometerZ());
-
-    ldk2m.toggleLaser(true);
-    ldk2m.getMeasurement();
-    
-    // setupOLED();
-    initDisplayHandler();
-  
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Begin beaning...");
 
     delay(1000);
@@ -54,8 +40,15 @@ void setup()
         0); /* Core where the task should run */
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "displayhandler started sucessfully");
 
-    initInterrupts();
-    startDisplayTimer();
+    // delay(250);
+    // xTaskCreatePinnedToCore(
+    //     inithandler, /* Function to implement the task */
+    //     "init", /* Name of the task */
+    //     10000,  /* Stack size in words */
+    //     NULL,  /* Task input parameter */
+    //     tskIDLE_PRIORITY ,  /* Priority of the task */
+    //     &init_task,  /* Task handle. */
+    //     0); /* Core where the task should run */
 }
 
 // extern "C" void app_main()

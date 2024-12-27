@@ -114,6 +114,14 @@ void DisplayHandler::drawCentered(String str, uint16_t cx, uint16_t cy, sFONT *f
     // Serial.printf("X: %i, Y: %i\n", (int)(cx - (uint16_t)((str.length()/2.0)*xsize)), (int)(cy - (uint16_t)(ysize/2)), str.c_str());
     Paint_DrawString_EN(cx - ((str.length()/2.0)*xsize), cy-(uint16_t)(ysize/2), str.c_str(), font, WHITE, WHITE);
 }
+
+void DisplayHandler::drawCenteredBlack(String str, uint16_t cx, uint16_t cy, sFONT *font)
+{
+    uint16_t xsize = font->Width;
+    uint16_t ysize = font->Width;
+    // Serial.printf("X: %i, Y: %i\n", (int)(cx - (uint16_t)((str.length()/2.0)*xsize)), (int)(cy - (uint16_t)(ysize/2)), str.c_str());
+    Paint_DrawString_EN(cx - ((str.length()/2.0)*xsize), cy-(uint16_t)(ysize/2), str.c_str(), font, WHITE, BLACK);
+}
    
 void DisplayHandler::displayStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5])
 {
@@ -307,37 +315,36 @@ void DisplayHandler::displayYN(const char prompt_top[11], const char prompt_btm[
 {
 
 	const int prompt_height = canvas_center_y - 40;
-	const int selector_height = canvas_center_y + 7;
+	const int selector_height = canvas_center_y;
 
 	// String str(prompt);
 	drawCentered(prompt_top,canvas_center_x,prompt_height);
-	drawCentered(prompt_btm,canvas_center_x,prompt_height+18);
+	drawCentered(prompt_btm,canvas_center_x+2,prompt_height+15);
 
 	if (YN)
 	{
-		Paint_DrawRectangle(canvas_center_x - 60, selector_height - 15,
-							50, 30,
+		Paint_DrawRectangle(canvas_center_x - 30, selector_height - 5,
+							canvas_center_x - 5, selector_height + 10,
 							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
-		Paint_DrawRectangle(canvas_center_x - 58,selector_height - 13,
-							46, 26,
-							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+		Paint_DrawRectangle(canvas_center_x + 5, selector_height - 5,
+							canvas_center_x + 30, selector_height + 10,
+							WHITE, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
 
-		drawCentered("YES",canvas_center_x - 34, selector_height-1);
-		drawCentered("NO",canvas_center_x + 34, selector_height-1);
+		drawCenteredBlack("YES",canvas_center_x - 17, selector_height);
+		drawCentered("NO",canvas_center_x + 17, selector_height);
 
 	} else {
+		Paint_DrawRectangle(canvas_center_x - 30, selector_height - 5,
+							canvas_center_x - 5, selector_height + 10,
+							WHITE, DOT_PIXEL_1X1, DRAW_FILL_EMPTY);
 
-		Paint_DrawRectangle(	canvas_center_x + 8, selector_height - 15,
-							50, 30,
+		Paint_DrawRectangle(canvas_center_x + 5, selector_height - 5,
+							canvas_center_x + 30, selector_height + 10,
 							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
 
-		Paint_DrawRectangle(	canvas_center_x + 10, selector_height - 13,
-							46, 26,
-							WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-
-		drawCentered("YES",canvas_center_x - 34, selector_height-1);
-		drawCentered("NO",canvas_center_x + 34, selector_height-1);
+		drawCentered("YES",canvas_center_x - 17, selector_height);
+		drawCenteredBlack("NO",canvas_center_x + 17, selector_height);
 	}
 }
 

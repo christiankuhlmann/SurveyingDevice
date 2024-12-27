@@ -60,7 +60,8 @@ class SensorHandler
 private:
     bool MAG_COMBINED_CAL = true; // Calibrate magnetometer separately to alignment
 
-    int static_calib_progress, las_calib_progress;
+    int static_calib_progress; // Goes from 0 to N_ORIENTATIONS
+    int las_calib_progress; // Goes from 0 to N_LASER_CALIB
 
     // Sensor objects - define as reference to object otherwise full mem is allocated (bad)
     Accelerometer &acc;

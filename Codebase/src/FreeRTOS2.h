@@ -60,6 +60,7 @@ static hw_timer_t *displayTimer_cfg = NULL;
 TaskHandle_t inputhandler_task;
 TaskHandle_t computefunc_task;
 TaskHandle_t displayhandler_task;
+TaskHandle_t init_task;
 
 static uint32_t buttonNumber = 0x00;
 static uint32_t inputhandlerNotifiedValue = 0x00;
@@ -292,8 +293,7 @@ void executeAction(const uint32_t action)
             } else if (calib_progress > N_ORIENTATIONS) {
                 display_mode = DISP_LASER_CALIB;
             }
-        }
-        if (action == ACTION_MODE_SHORT){
+        } else if (action == ACTION_MODE_SHORT){
             Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: IDLE");
             clearCalibration();
             calib_progress = 0;
@@ -303,9 +303,25 @@ void executeAction(const uint32_t action)
         break;
 
         case MODE_CALIB_REM_YN:
+        if (action == ACTION_ON_SHORT)
+        {
+            if(y_n_selector) removePreviosCalib();
+        } else if (action == ACTION_UP_SHORT){
+            y_n_selector = true;
+        } else if (action == ACTION_DOWN_SHORT){
+            y_n_selector = false;
+        }
         break;
 
         case MODE_CALIB_SAVE_YN:
+        if (action == ACTION_ON_SHORT)
+        {
+            if(y_n_selector) saveCalib();
+        } else if (action == ACTION_UP_SHORT){
+            y_n_selector = true;
+        } else if (action == ACTION_DOWN_SHORT){
+            y_n_selector = false;
+        }
         break;
 
         case MODE_BLUETOOTH:
@@ -319,8 +335,6 @@ void executeAction(const uint32_t action)
     }
     current_mode = next_mode;
 }
-
-
 
 void updateDisplay()
 {
@@ -367,9 +381,29 @@ void startDisplayTimer()
     // configTASK_NOTIFICATION_ARRAY_ENTRIES
 }
 
+void initialise_device()
+{
+    sh.init();
+    // rm3100.begin();
+    rm3100.update();
+    Serial.printf("Mag data: %f %f %f\n", rm3100.getX(),rm3100.getY(),rm3100.getZ());
+
+    sc_accelerometer.getMeasurement();
+    Serial.printf("Acc data: %lf %lf %lf\n", sca3300.getCalculatedAccelerometerX(),sca3300.getCalculatedAccelerometerY(),sca3300.getCalculatedAccelerometerZ());
+
+    ldk2m.toggleLaser(true);
+    ldk2m.getMeasurement();
+
+    Serial.println("sh.update...");
+    sh.update();
+
+    initDisplayHandler();
+    initInterrupts();
+    startDisplayTimer();
+}
 
 /****************************************************************
- * Task to handler display - should have highest priority
+ * Task to handle display - should have highest priority
  ****************************************************************/
 void displayhandler(void* parameter)
 {
@@ -387,7 +421,7 @@ void displayhandler(void* parameter)
 }
 
 /****************************************************************
- * Task to handler inputs - should have second highest priority
+ * Task to handle inputs - should have second highest priority
  ****************************************************************/
 void inputhandler(void* parameter)
 {
@@ -423,11 +457,14 @@ void inputhandler(void* parameter)
 }
 
 /****************************************************************
- * Task to handler computation - should have lowest priority
+ * Task to handle computation - should have lowest priority
  ****************************************************************/
 void computehandler(void* parameter)
 {
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start computehandler");
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Initialising device...");
+    initialise_device();
+    sc_accelerometer.getMeasurement();
     while(true)
     {
         Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Computehandler: Waiting for notify...\n");
@@ -437,6 +474,19 @@ void computehandler(void* parameter)
                             portMAX_DELAY );  /* Block indefinitely. */
         executeAction(computefuncNotifiedValue);
     }
+}
+
+
+
+
+
+/****************************************************************
+ * Task to handle initialisation - should have highest priority
+ ****************************************************************/
+void inithandler(void* parameter)
+{
+    initialise_device();
+    while(true) {delay(1);}
 }
 
 #endif

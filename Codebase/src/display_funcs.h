@@ -95,6 +95,7 @@ class DisplayHandler {
 
     void displayTopBar(bool bluetooth, int battery_level, int status);
     void drawCentered(String str, uint16_t cx, uint16_t cy, sFONT* font = &Font12);
+    void drawCenteredBlack(String str, uint16_t cx, uint16_t cy, sFONT *font = &Font12);
     void displayStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5] = "");
     void displayLaserCalib(const float angle_deg, const char progress[5]);
     void drawCompass(uint16_t cx, uint16_t cy, uint16_t line_length, uint16_t arrow_length);

@@ -16,14 +16,14 @@ private:
 
 
 
-RM3100SensorConnection::RM3100SensorConnection(RM3100 &rm3100):rm3100_connection(rm3100){}
+inline RM3100SensorConnection::RM3100SensorConnection(RM3100 &rm3100):rm3100_connection(rm3100){}
 
-void RM3100SensorConnection::init()
+inline void RM3100SensorConnection::init()
 {
     rm3100_connection.begin();
 }
 
-Vector3f RM3100SensorConnection::getMeasurement()
+inline Vector3f RM3100SensorConnection::getMeasurement()
 {
     rm3100_connection.update();
     Vector3f data;

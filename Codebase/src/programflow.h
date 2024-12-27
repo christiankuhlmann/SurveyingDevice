@@ -1,4 +1,6 @@
-#include <waveshareoled.h>
+#ifndef H_PROGRAMFLOW
+#define H_PROGRAMFLOW
+
 #include <SensorHandler.h>
 #include "RM3100SensorConnection.h"
 #include "SCA3300SensorConnection.h"
@@ -18,6 +20,8 @@ static SensorHandler sh(sc_accelerometer, sc_magnetometer, sc_laser);
 
 static OLED::DisplayHandler dh;
 
+static bool y_n_selector = true;
+
 enum LoadingEnum
 {
     collecting_data,
@@ -26,17 +30,52 @@ enum LoadingEnum
     aligning
 };
 
-void  laserOn()
+void laserOn();
+
+void laserOff();
+
+void takeShot();
+
+int getCalib();
+
+void saveCalib();
+
+void removePreviosCalib();
+
+void clearCalibration();
+
+void testFunc();
+
+void displayIdle();
+
+void displayHistory();
+
+void displayCalibSaveYN();
+
+void displayNewCalibYN();
+
+void displayStaticCalib(int n_calib);
+
+void displayLaserCalib(int n_calib);
+
+void displayLoading(LoadingEnum loading_type);
+
+void initDisplayHandler();
+
+// #endif
+
+
+void laserOn()
 {
     sc_laser.toggleLaser(true);
 }
 
-void  laserOff()
+void laserOff()
 {
     sc_laser.toggleLaser(false);
 }
 
-void  takeShot()
+void takeShot()
 {
     sc_laser.beep();
     sh.takeShot();
@@ -63,6 +102,11 @@ void saveCalib()
     sh.saveCalibration();
 }
 
+void removePreviosCalib()
+{
+    sh.removePrevCalib((sh.getCalibProgress() <= N_ORIENTATIONS));
+}
+
 void clearCalibration()
 {
     sh.resetCalibration();
@@ -70,60 +114,88 @@ void clearCalibration()
 
 void testFunc()
 {
-    sh.update();
-    dh.clearDisplay();
-    dh.drawHeading(10.5);
-    dh.drawInclination(-168.2);
-    dh.drawDistance(8.3);
-    dh.update();
+    // Serial.println("Getting accel measurement...");
+    // sc_accelerometer.getMeasurement();
 
-    Driver_Delay_ms(5000); 
+    // Serial.println("Updating sensorhandler...");
+    // sh.update();
+    // dh.clearDisplay();
+    // dh.drawHeading(10.5);
+    // dh.drawInclination(-168.2);
+    // dh.drawDistance(8.3);
+    // dh.update();
 
-    dh.clearDisplay();
-    dh.displayStaticCalib(OLED::CompassDirection::NORTH, OLED::CompassDirection::UP,"1/12");
-    dh.update();
+    // Driver_Delay_ms(5000); 
 
-    Driver_Delay_ms(5000); 
+    // dh.clearDisplay();
+    // dh.displayStaticCalib(OLED::CompassDirection::NORTH, OLED::CompassDirection::UP,"1/12");
+    // dh.update();
 
-    dh.clearDisplay();
-    dh.displayLaserCalib(120, "6/8");
-    dh.update();
+    // Driver_Delay_ms(5000); 
 
-    Driver_Delay_ms(5000); 
+    // dh.clearDisplay();
+    // dh.displayLaserCalib(120, "6/8");
+    // dh.update();
 
-    for (int i=0; i<20; i++)
-    {
-        dh.clearDisplay();
-        dh.displayLoading("Gathering", "Data", i);
-        dh.update();
-        Driver_Delay_ms(500);
-    }
+    // Driver_Delay_ms(5000); 
+
+    // for (int i=0; i<20; i++)
+    // {
+    //     dh.clearDisplay();
+    //     dh.displayLoading("Gathering", "Data", i);
+    //     dh.update();
+    //     Driver_Delay_ms(500);
+    // }
     
 
-    Driver_Delay_ms(5000); 
+    // Driver_Delay_ms(5000); 
+
+    // dh.clearDisplay();
+    // dh.drawBattery(5);
+    // dh.update();
+
+    // Driver_Delay_ms(2000); 
+    // dh.clearDisplay();
+    // dh.drawBattery(15);
+    // dh.update();
+
+    // Driver_Delay_ms(2000); 
+    // dh.clearDisplay();
+    // dh.drawBattery(45);
+    // dh.update();
+
+    // Driver_Delay_ms(2000); 
+    // dh.clearDisplay();
+    // dh.drawBattery(65);
+    // dh.update();
+
+    // Driver_Delay_ms(2000); 
+    // dh.clearDisplay();
+    // dh.drawBattery(85);
+    // dh.update();
+    // Driver_Delay_ms(2000); 
 
     dh.clearDisplay();
-    dh.drawBattery(5);
+    y_n_selector = true;
+    displayCalibSaveYN();
     dh.update();
-
     Driver_Delay_ms(2000); 
+
     dh.clearDisplay();
-    dh.drawBattery(15);
+    y_n_selector = false;
+    displayCalibSaveYN();
     dh.update();
-
     Driver_Delay_ms(2000); 
+
     dh.clearDisplay();
-    dh.drawBattery(45);
+    y_n_selector = true;
+    displayNewCalibYN();
     dh.update();
-
     Driver_Delay_ms(2000); 
-    dh.clearDisplay();
-    dh.drawBattery(65);
-    dh.update();
 
-    Driver_Delay_ms(2000); 
     dh.clearDisplay();
-    dh.drawBattery(85);
+    y_n_selector = false;
+    displayNewCalibYN();
     dh.update();
     Driver_Delay_ms(2000); 
     
@@ -167,12 +239,16 @@ void displayHistory()
 
 void displayCalibSaveYN()
 {
+    dh.displayYN("Save", "calib?", y_n_selector);
+}
 
+void displayNewCalibYN()
+{
+    dh.displayYN("New", "calib?", y_n_selector);
 }
 
 void displayStaticCalib(int n_calib)
 {
-    dh.clearDisplay();
     switch(n_calib)
     {
         case 0:
@@ -223,12 +299,10 @@ void displayStaticCalib(int n_calib)
         dh.displayStaticCalib(OLED::CompassDirection::DOWN,OLED::CompassDirection::NORTH_EAST,"12/12");
         break;
     }
-    dh.update();
 }
 
 void displayLaserCalib(int n_calib)
 {
-    dh.clearDisplay();
     switch (n_calib)
     {
         case 0:
@@ -263,7 +337,6 @@ void displayLaserCalib(int n_calib)
         dh.displayLaserCalib(315 ,"8/8");
         break;
     }
-    dh.update();
 }
 
 void displayLoading(LoadingEnum loading_type)
@@ -287,3 +360,5 @@ void initDisplayHandler()
     dh.update();
     
 }
+
+#endif

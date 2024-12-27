@@ -15,14 +15,15 @@ private:
     SCA3300& sca3300_connection;
 };
 
-SCA3300SensorConnection::SCA3300SensorConnection(SCA3300& sca3300):sca3300_connection(sca3300){}
+inline SCA3300SensorConnection::SCA3300SensorConnection(SCA3300& sca3300):sca3300_connection(sca3300){}
 
-void SCA3300SensorConnection::init()
+inline void SCA3300SensorConnection::init()
 {
     if (sca3300_connection.begin() != true) {Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Accelerometer initialisation failed!"); }
+    else { Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Accelerometer initialisation succesful!"); }
 }
 
-Vector3f SCA3300SensorConnection::getMeasurement()
+inline Vector3f SCA3300SensorConnection::getMeasurement()
 {
     Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Getting measurement...");
     Eigen::Vector3f data;
