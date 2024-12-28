@@ -110,6 +110,8 @@ public:
     int getCalibProgress();
     int getCalibProgress(bool static_calib);
     
+    void dumpCalibToSerial();
+
     /**
      * @brief Take shot using laser by default.
      * Returns 0 if success, anything else is an error.

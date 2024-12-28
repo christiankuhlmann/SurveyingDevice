@@ -47,7 +47,7 @@
  * Config for timing
  ****************************************************************/
 const static int BTN_LONG_PRESS_MS = 2000;
-const static int DISPLAY_HZ = 10;
+const static int DISPLAY_HZ = 3;
 const static float DISPLAY_PERIOD = 1.0/DISPLAY_HZ;
 const static int DISPLAY_PRESCALAR = 80;
 const static int DISPLAY_TMR_HZ = APB_CLK_FREQ/DISPLAY_PRESCALAR;
@@ -80,9 +80,11 @@ enum DisplayModeEnum
     DISP_CALIBRATION,
     DISP_LASER_CALIB,
     DISP_STATIC_CALIB,
+    DISP_CALIB_STABILISE,
 
     DISP_CALIB_SAVE,
     DISP_CALIB_REM,
+    DISP_CALIB_EXIT,
 
     DISP_CALIB_LOADING
 };
@@ -98,6 +100,7 @@ enum DeviceStateEnum
     MODE_CALIB,
     MODE_CALIB_REM_YN,
     MODE_CALIB_SAVE_YN,
+    MODE_CALIB_EXIT,
 
     MODE_BLUETOOTH,
     MODE_FILES,
@@ -107,7 +110,7 @@ enum DeviceStateEnum
 static DeviceStateEnum current_mode;
 static DeviceStateEnum next_mode;
 static DisplayModeEnum display_mode;
-
+static OLED::MenuEnum menu_state;
 /****************************************************************
  * Globals
  ****************************************************************/
@@ -213,6 +216,7 @@ void extern takeShot();
 int extern getCalib();
 void extern saveCalib();
 void extern clearCalibration();
+void extern loadCalibration();
 
 /****************************************************************
  * Program flow FSM
@@ -275,33 +279,82 @@ void executeAction(const uint32_t action)
         break;
 
         case MODE_MENU:
-        if (action == ACTION_MODE_SHORT){
+        if (action == ACTION_ON_SHORT){
+            executeMenuAction(menu_state);
+
+        } else if (action == ACTION_MODE_SHORT){
             Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: CALIB");
+            clearCalibration(); // Clear calibration when entering calibration mode
             next_mode = MODE_CALIB;
-            display_mode = DISP_CALIBRATION;
+            display_mode = DISP_STATIC_CALIB;
+
+        } else if (action == ACTION_UP_SHORT){
+            if (static_cast<int>(menu_state) <= 0) {
+                menu_state = static_cast<OLED::MenuEnum>(3);
+            } else {
+                menu_state = static_cast<OLED::MenuEnum>(static_cast<int>(menu_state) - 1);
+            }
+
+        } else if (action == ACTION_DOWN_SHORT){
+            if (static_cast<int>(menu_state) >= 3) {
+                menu_state = static_cast<OLED::MenuEnum>(0);
+            } else {
+                menu_state = static_cast<OLED::MenuEnum>(static_cast<int>(menu_state) + 1);
+            }
         }
         break;
 
+
+        /************************************************************************************************
+         *                                      CALIBRATION MODE
+         ************************************************************************************************/
         case MODE_CALIB:
         if (action == ACTION_ON_SHORT)
         {
             Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Getting calibration");
+            if (calib_progress == 2 || calib_progress == 3)
+            {
+                display_mode = DISP_CALIB_STABILISE;
+                delay(3000); // If facing down delay 3s before taking measurement
+            }
+            
+            display_mode = DISP_CALIB_LOADING;
             calib_progress = getCalib();
+            laserBeep();
             if (calib_progress >= (N_ORIENTATIONS + N_LASER_CAL))
             {
+                next_mode = MODE_CALIB_SAVE_YN;
                 display_mode = DISP_CALIB_SAVE;
-            } else if (calib_progress > N_ORIENTATIONS) {
+            } else if (calib_progress >= N_ORIENTATIONS) {
+                next_mode = MODE_CALIB;
                 display_mode = DISP_LASER_CALIB;
+            } else {
+                next_mode = MODE_CALIB;
+                display_mode = DISP_STATIC_CALIB; 
             }
         } else if (action == ACTION_MODE_SHORT){
             Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: IDLE");
-            clearCalibration();
-            calib_progress = 0;
-            next_mode = MODE_IDLE;
-            display_mode = DISP_IDLE;
+            // clearCalibration();
+            // loadCalibration();
+            // calib_progress = 0;
+            // next_mode = MODE_IDLE;
+            // display_mode = DISP_IDLE;
+            if (calib_progress > 0)
+            {
+                next_mode = MODE_CALIB_EXIT;
+                display_mode = DISP_CALIB_EXIT;
+            } else {
+                next_mode = MODE_IDLE;
+                display_mode = DISP_IDLE;
+            }
+
         }
         break;
 
+
+        /************************************************************************************************
+         *                                REMOVE LATEST CALIBRATION MODE
+         ************************************************************************************************/
         case MODE_CALIB_REM_YN:
         if (action == ACTION_ON_SHORT)
         {
@@ -313,10 +366,45 @@ void executeAction(const uint32_t action)
         }
         break;
 
+
+        /************************************************************************************************
+         *                                    SAVE CALIBRATION MODE
+         ************************************************************************************************/
         case MODE_CALIB_SAVE_YN:
         if (action == ACTION_ON_SHORT)
         {
             if(y_n_selector) saveCalib();
+            next_mode = MODE_IDLE;
+            display_mode = DISP_IDLE;
+        } else if (action == ACTION_UP_SHORT){
+            y_n_selector = true;
+        } else if (action == ACTION_DOWN_SHORT){
+            y_n_selector = false;
+        }
+        break;
+
+
+        /************************************************************************************************
+         *                                    EXIT CALIBRATION MODE
+         ************************************************************************************************/
+        case MODE_CALIB_EXIT:
+        if (action == ACTION_ON_SHORT)
+        {
+            if(y_n_selector) {
+                calib_progress = 0;
+                clearCalibration();
+                loadCalibration();
+                display_mode = DISP_IDLE;
+                next_mode = MODE_IDLE;
+            } else {
+                if (calib_progress >= N_ORIENTATIONS) {
+                    next_mode = MODE_CALIB;
+                    display_mode = DISP_LASER_CALIB;
+                } else {
+                    next_mode = MODE_CALIB;
+                    display_mode = DISP_STATIC_CALIB; 
+                }
+            }
         } else if (action == ACTION_UP_SHORT){
             y_n_selector = true;
         } else if (action == ACTION_DOWN_SHORT){
@@ -341,32 +429,59 @@ void updateDisplay()
     switch (display_mode)
     {
     case DISP_IDLE:
+        // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Displaying idle...");
         displayIdle();
         break;
 
     case DISP_HISTORY:
+        // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Displaying history...");
         displayHistory();
         break;
 
+    case DISP_MENU:
+        // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Displaying menu...");
+        displayMenu(menu_state);
+        break;
+
     case DISP_STATIC_CALIB:
+        // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Displaying static calib...");
         displayStaticCalib(sh.getCalibProgress(true));
         break;
 
     case DISP_LASER_CALIB:
+        // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Displaying laser calib...");
+        // Serial.println(sh.getCalibProgress(false));
         displayLaserCalib(sh.getCalibProgress(false));
         break;
 
     case DISP_CALIB_SAVE:
         displayCalibSaveYN();
         break;
+
+    case DISP_CALIB_REM:
+        displayCalibRemYN();
+        break;
+
+    case DISP_CALIB_EXIT:
+        displayCalibExitYN();
+        break;
+
+    case DISP_CALIB_LOADING:
+        displayLoading(LoadingEnum::collecting_data);
+        break;
+
+    case DISP_CALIB_STABILISE:
+        displayLoading(LoadingEnum::calib_stabilising);
+        break;
     
     default:
         break;
     }
-    xTaskNotifyFromISR( displayhandler_task,
-                        0x00,
-                        eSetValueWithOverwrite, 
-                        NULL);
+    // xTaskNotifyFromISR( displayhandler_task,
+    //                     0x00,
+    //                     eSetValueWithOverwrite, 
+    //                     NULL);
+
 }
 
 void startDisplayTimer()
@@ -410,7 +525,7 @@ void displayhandler(void* parameter)
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start displayhandler");
     while(true)
     {
-        Debug_csd::debug(Debug_csd::DEBUG_OLED,"Displayhandler: Waiting for notify...\n");
+        // Debug_csd::debug(Debug_csd::DEBUG_OLED,"Displayhandler: Waiting for notify...\n");
         xTaskNotifyWait(    0x00,      /* Don't clear any notification bits on entry. */
                             ULONG_MAX, /* Reset the notification value to 0 on exit. */
                             &displayhandlerNotifiedValue, /* Notified value pass out. */
@@ -476,17 +591,13 @@ void computehandler(void* parameter)
     }
 }
 
-
-
-
-
 /****************************************************************
  * Task to handle initialisation - should have highest priority
  ****************************************************************/
-void inithandler(void* parameter)
-{
-    initialise_device();
-    while(true) {delay(1);}
-}
+// void inithandler(void* parameter)
+// {
+//     initialise_device();
+//     while(true) {delay(1);}
+// }
 
 #endif

@@ -1,6 +1,8 @@
 #ifndef H_PROGRAMFLOW
 #define H_PROGRAMFLOW
 
+#define VBATPIN A6
+
 #include <SensorHandler.h>
 #include "RM3100SensorConnection.h"
 #include "SCA3300SensorConnection.h"
@@ -25,14 +27,20 @@ static bool y_n_selector = true;
 enum LoadingEnum
 {
     collecting_data,
+    calib_stabilising,
     calculating,
     calibrating,
     aligning
 };
 
+
+int getBatteryVoltage();
+
 void laserOn();
 
 void laserOff();
+
+void laserBeep();
 
 void takeShot();
 
@@ -52,7 +60,7 @@ void displayHistory();
 
 void displayCalibSaveYN();
 
-void displayNewCalibYN();
+void displayCalibExitYN();
 
 void displayStaticCalib(int n_calib);
 
@@ -62,8 +70,29 @@ void displayLoading(LoadingEnum loading_type);
 
 void initDisplayHandler();
 
+void executeMenuAction(OLED::MenuEnum state);
+
 // #endif
 
+int getBatteryVoltage()
+{
+    float measuredvbat = analogRead(VBATPIN);
+    measuredvbat *= 2;    // we divided by 2, so multiply back
+    measuredvbat *= 3.3;  // Multiply by 3.3V, our reference voltage
+    measuredvbat /= 1024; // convert to voltage
+    
+    if (measuredvbat >= 3.98) {
+        return 100; // Between 75% and 100%
+    } else if (3.98 > measuredvbat >= 3.84) {
+        return 70; // Between 50% and 75%
+    } else if (3.84 > measuredvbat >= 3.75) {
+        return 40; // Between 25% and 50%
+    } else if (3.75 > measuredvbat >= 3.69) {
+        return 20; // Between 25% and 50%
+    } else {
+        return 5;
+    }
+}
 
 void laserOn()
 {
@@ -73,6 +102,11 @@ void laserOn()
 void laserOff()
 {
     sc_laser.toggleLaser(false);
+}
+
+void laserBeep()
+{
+    sc_laser.beep();
 }
 
 void takeShot()
@@ -110,6 +144,11 @@ void removePreviosCalib()
 void clearCalibration()
 {
     sh.resetCalibration();
+}
+
+void loadCalibration()
+{
+    sh.loadCalibration();
 }
 
 void testFunc()
@@ -189,27 +228,38 @@ void testFunc()
 
     dh.clearDisplay();
     y_n_selector = true;
-    displayNewCalibYN();
+    displayCalibExitYN();
     dh.update();
     Driver_Delay_ms(2000); 
 
     dh.clearDisplay();
-    y_n_selector = false;
-    displayNewCalibYN();
+    y_n_selector = false;\
+    displayCalibExitYN();
     dh.update();
     Driver_Delay_ms(2000); 
     
 }
 
+void displayBatteryStatus()
+{
+    dh.drawBattery(getBatteryVoltage());
+}
+
+void displayMode()
+{
+
+}
 
 void displayIdle()
 {
-    // sh.update();
-    // dh.clearDisplay();
-    // dh.drawHeading(sh.getShotData().HIR(0));
-    // dh.drawInclination(sh.getShotData().HIR(1));
+    sh.update();
+    dh.clearDisplay();
+    dh.drawHeading(RAD_TO_DEG * sh.getShotData().HIR(0));
+    dh.drawInclination(RAD_TO_DEG * sh.getShotData().HIR(1));
+    displayBatteryStatus();
+    dh.update();
 
-    testFunc();
+    // testFunc();
 
 
     // dummy_value++;
@@ -234,21 +284,38 @@ void displayIdle()
 
 void displayHistory()
 {
-
+    dh.clearDisplay();
+    displayBatteryStatus();
+    dh.update();
 }
 
 void displayCalibSaveYN()
 {
+    dh.clearDisplay();
     dh.displayYN("Save", "calib?", y_n_selector);
+    displayBatteryStatus();
+    dh.update();
 }
 
-void displayNewCalibYN()
+void displayCalibRemYN()
 {
-    dh.displayYN("New", "calib?", y_n_selector);
+    dh.clearDisplay();
+    dh.displayYN("Remove", "recent?", y_n_selector);
+    displayBatteryStatus();
+    dh.update();
+}
+
+void displayCalibExitYN()
+{
+    dh.clearDisplay();
+    dh.displayYN("Exit", "calib?", y_n_selector);
+    displayBatteryStatus();
+    dh.update();
 }
 
 void displayStaticCalib(int n_calib)
 {
+    dh.clearDisplay();
     switch(n_calib)
     {
         case 0:
@@ -299,10 +366,13 @@ void displayStaticCalib(int n_calib)
         dh.displayStaticCalib(OLED::CompassDirection::DOWN,OLED::CompassDirection::NORTH_EAST,"12/12");
         break;
     }
+    displayBatteryStatus();
+    dh.update();
 }
 
 void displayLaserCalib(int n_calib)
 {
+    dh.clearDisplay();
     switch (n_calib)
     {
         case 0:
@@ -337,6 +407,8 @@ void displayLaserCalib(int n_calib)
         dh.displayLaserCalib(315 ,"8/8");
         break;
     }
+    displayBatteryStatus();
+    dh.update();
 }
 
 void displayLoading(LoadingEnum loading_type)
@@ -347,9 +419,14 @@ void displayLoading(LoadingEnum loading_type)
     switch (loading_type)
     {
     case collecting_data:
-        dh.displayLoading("Collecting","data...",count);
+        dh.displayLoading("Gathering","data...",count);
+        break;
+    
+    case calib_stabilising:
+        dh.displayLoading("Waiting","3s...",count);
         break;
     }
+    displayBatteryStatus();
     dh.update();
 }
 
@@ -359,6 +436,27 @@ void initDisplayHandler()
     dh.clearDisplay();
     dh.update();
     
+}
+
+void displayMenu(OLED::MenuEnum state)
+{
+    dh.clearDisplay();
+    dh.displayMenu(state);
+    displayBatteryStatus();
+    dh.update();
+}
+
+void executeMenuAction(OLED::MenuEnum menu_action)
+{
+    switch (menu_action)
+    {
+    case OLED::MenuEnum::MENU_DUMP_DATA:
+        sh.dumpCalibToSerial();
+    break;
+    
+    default:
+        break;
+    }
 }
 
 #endif

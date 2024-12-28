@@ -1,5 +1,12 @@
 #include "SensorHandler.h"
 #include <queue>
+#include <ArduinoJson.h>
+
+
+typedef Matrix<float, Dynamic, Dynamic, RowMajor> RowMatrixXf;
+static StaticJsonDocument<60480> root;
+static float eig_arr[3][N_ALIGN_MAG_ACC];
+static float las_arr[3][N_LASER_CAL];
 
 static unsigned int counter;
 
@@ -368,3 +375,79 @@ const DeviceCalibrationParameters& SensorHandler::getCalibParms()
 {
     return calib_parms;
 }
+
+void SensorHandler::dumpCalibToSerial()
+{
+    root.clear();
+
+    JsonArray jarr;
+    MatrixXf static_acc_samples, static_mag_samples, laser_acc_samples, laser_mag_samples;
+
+    JsonArray acc_data = root.createNestedArray("static_acc_samples");
+    static_acc_samples = static_calib_data.acc_data;
+    Map<RowMatrixXf>(&eig_arr[0][0], 3, N_ALIGN_MAG_ACC) = static_acc_samples; 
+    copyArray(eig_arr,acc_data);
+    Serial.print("static_acc_samples\n");
+    // serializeJson(acc_data,Serial);
+
+    JsonArray mag_data = root.createNestedArray("static_mag_samples");
+    static_mag_samples = static_calib_data.mag_data;
+    Map<RowMatrixXf>(&eig_arr[0][0], 3, N_ALIGN_MAG_ACC) = static_mag_samples; 
+    copyArray(eig_arr,mag_data);
+    Serial.print("static_mag_samples\n");
+    // serializeJson(mag_data,Serial);
+
+    JsonArray las_acc_data = root.createNestedArray("laser_acc_samples");
+    laser_acc_samples = laser_calib_data.acc_data;
+    Map<RowMatrixXf>(&las_arr[0][0], 3, N_LASER_CAL) = laser_acc_samples; 
+    copyArray(las_arr,las_acc_data);
+    Serial.print("laser_acc_samples\n");
+    // serializeJson(las_acc_data,Serial);
+
+    JsonArray las_mag_data = root.createNestedArray("laser_mag_samples");
+    laser_mag_samples = laser_calib_data.mag_data;
+    Map<RowMatrixXf>(&las_arr[0][0], 3, N_LASER_CAL) = laser_mag_samples; 
+    copyArray(las_arr,las_mag_data);
+    Serial.print("laser_mag_samples\n");
+    serializeJson(las_mag_data,Serial);
+
+
+    // JsonObject parms = root.createNestedObject("parms");
+    JsonArray Ra_static = root.createNestedArray("Ra_static");
+    JsonArray ba_static = root.createNestedArray("ba_static");
+    JsonArray Rm_static = root.createNestedArray("Rm_static");
+    JsonArray bm_static = root.createNestedArray("bm_static");
+    JsonArray Ra_laser = root.createNestedArray("Ra_laser");
+    JsonArray Rm_laser = root.createNestedArray("Rm_laser");
+    JsonArray Rm_align = root.createNestedArray("Rm_align");
+
+
+    float vec3fdata[3];
+    float mat3fdata[3][3];
+
+    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Ra_cal; 
+    copyArray(mat3fdata,Ra_static);
+    Map<Vector3f>(&vec3fdata[0], 3) = calib_parms.ba_cal; 
+    copyArray(vec3fdata,ba_static);
+
+
+    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Rm_cal; 
+    copyArray(mat3fdata,Rm_static);
+    Map<Vector3f>(&vec3fdata[0], 3) = calib_parms.bm_cal; 
+    copyArray(vec3fdata,bm_static);
+
+
+    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Ra_las; 
+    copyArray(mat3fdata,Ra_laser);
+
+    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Rm_las; 
+    copyArray(mat3fdata,Rm_laser);
+
+
+    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Rm_align; 
+    copyArray(mat3fdata,Rm_align);
+
+    serializeJson(root,Serial);
+
+}
+

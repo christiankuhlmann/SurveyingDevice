@@ -107,12 +107,20 @@ void DisplayHandler::drawCompass(uint16_t cx, uint16_t cy, uint16_t line_length,
                     WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
 }
 
-void DisplayHandler::drawCentered(String str, uint16_t cx, uint16_t cy, sFONT *font)
+void DisplayHandler::drawCentered(String str, uint16_t cx, uint16_t cy, sFONT *font, uint16_t fg, uint16_t bg)
 {
     uint16_t xsize = font->Width;
     uint16_t ysize = font->Width;
     // Serial.printf("X: %i, Y: %i\n", (int)(cx - (uint16_t)((str.length()/2.0)*xsize)), (int)(cy - (uint16_t)(ysize/2)), str.c_str());
-    Paint_DrawString_EN(cx - ((str.length()/2.0)*xsize), cy-(uint16_t)(ysize/2), str.c_str(), font, WHITE, WHITE);
+    Paint_DrawString_EN(cx - ((str.length()/2.0)*xsize), cy-(uint16_t)(ysize/2), str.c_str(), font, fg, bg);
+}
+
+void DisplayHandler::drawLeft(String str, uint16_t x, uint16_t y, sFONT *font, uint16_t fg, uint16_t bg)
+{
+    uint16_t xsize = font->Width;
+    uint16_t ysize = font->Width;
+    // Serial.printf("X: %i, Y: %i\n", (int)(cx - (uint16_t)((str.length()/2.0)*xsize)), (int)(cy - (uint16_t)(ysize/2)), str.c_str());
+    Paint_DrawString_EN(x, y, str.c_str(), font, fg, bg);
 }
 
 void DisplayHandler::drawCenteredBlack(String str, uint16_t cx, uint16_t cy, sFONT *font)
@@ -122,13 +130,21 @@ void DisplayHandler::drawCenteredBlack(String str, uint16_t cx, uint16_t cy, sFO
     // Serial.printf("X: %i, Y: %i\n", (int)(cx - (uint16_t)((str.length()/2.0)*xsize)), (int)(cy - (uint16_t)(ysize/2)), str.c_str());
     Paint_DrawString_EN(cx - ((str.length()/2.0)*xsize), cy-(uint16_t)(ysize/2), str.c_str(), font, WHITE, BLACK);
 }
-   
+
+void DisplayHandler::drawLeftBlack(String str, uint16_t x, uint16_t y, sFONT *font)
+{
+    uint16_t xsize = font->Width;
+    uint16_t ysize = font->Width;
+    // Serial.printf("X: %i, Y: %i\n", (int)(cx - (uint16_t)((str.length()/2.0)*xsize)), (int)(cy - (uint16_t)(ysize/2)), str.c_str());
+    Paint_DrawString_EN(x, y, str.c_str(), font, WHITE, BLACK);
+}
+
 void DisplayHandler::displayStaticCalib(CompassDirection pointing, CompassDirection facing, const char progress[5])
 {
 
 	// Paint_DrawRectangle(0, 0, SCREEN_WIDTH, TOP_BAR_HEIGHT, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
-    drawCentered(String("Calib"),SCREEN_WIDTH/2,7, &Font12);
-	drawCentered(String(progress),SCREEN_WIDTH/2,20, &Font12);
+    // drawCentered(String("Calib"),SCREEN_WIDTH/2,7, &Font12);
+	drawCentered(String(progress),SCREEN_WIDTH/2,22, &Font12);
     // drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT + Font8.Height,&Font8);
 	// drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT + Font8.Height*2+2,&Font8);
 
@@ -156,7 +172,7 @@ void DisplayHandler::displayLaserCalib(const float angle_deg, const char progres
 
 	// int quad = floor(fmod(angle,M_2_PI)*0.95/M_PI_2);
     int quad = floor(angle_deg*0.975/90);
-	Serial.println(quad);
+	// Serial.println(quad);
 
     if (angle_deg < 10) quad = 4;
 
@@ -210,8 +226,8 @@ void DisplayHandler::displayLaserCalib(const float angle_deg, const char progres
         break;
     }
 
-	drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT,&Font12);
-	drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+Font12.Height+2,&Font12);
+	drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+10,&Font12);
+	drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+10+Font12.Height+2,&Font12);
     char str_contents [4];
     sprintf(str_contents,"%03.0f", angle_deg);
 	drawCentered(String(str_contents),center.x,center.y-3,&Font12);
@@ -229,7 +245,7 @@ void DisplayHandler::drawCompassDirection(uint16_t cx, uint16_t cy, uint16_t lin
 		break;
 
 		case DOWN:
-		angle = 180;
+		angle = 4*M_PI_4;
 		N_arrow = 1;
 		break;
 
@@ -425,6 +441,21 @@ void DisplayHandler::drawBattery(int batt_percentage) {
 	}
 }
 
+void DisplayHandler::displayMenu(OLED::MenuEnum menu_state)
+{
+	drawCentered("Menu",SCREEN_WIDTH/2,TOP_BAR_HEIGHT+5,&Font16);
+	Paint_DrawRectangle(
+		0,
+		TOP_BAR_HEIGHT+20 + static_cast<int>(menu_state) * 15,
+		63,
+		TOP_BAR_HEIGHT+22 + Font12.Height + static_cast<int>(menu_state) * 15,
+		WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+
+	drawLeft(menu_arr[0],1,TOP_BAR_HEIGHT+20, &Font12, WHITE, !(menu_state == 0) * WHITE);
+	drawLeft(menu_arr[1],1,TOP_BAR_HEIGHT+35, &Font12, WHITE, !(menu_state == 1) * WHITE);
+	drawLeft(menu_arr[2],1,TOP_BAR_HEIGHT+50, &Font12, WHITE, !(menu_state == 2) * WHITE);
+	drawLeft(menu_arr[3],1,TOP_BAR_HEIGHT+65, &Font12, WHITE, !(menu_state == 3) * WHITE);
+}
 
 // void DisplayHandler::drawBlutooth(bool ble_status)
 // {
