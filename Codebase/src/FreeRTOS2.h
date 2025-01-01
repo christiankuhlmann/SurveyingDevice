@@ -317,7 +317,7 @@ void executeAction(const uint32_t action)
                 display_mode = DISP_CALIB_STABILISE;
                 delay(3000); // If facing down delay 3s before taking measurement
             }
-            
+
             display_mode = DISP_CALIB_LOADING;
             calib_progress = getCalib();
             laserBeep();
@@ -328,6 +328,7 @@ void executeAction(const uint32_t action)
             } else if (calib_progress >= N_ORIENTATIONS) {
                 next_mode = MODE_CALIB;
                 display_mode = DISP_LASER_CALIB;
+                laserOn();
             } else {
                 next_mode = MODE_CALIB;
                 display_mode = DISP_STATIC_CALIB; 
