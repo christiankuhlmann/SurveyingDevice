@@ -141,9 +141,9 @@ void SensorHandler::update()
     
     Serial.println("");
     Serial.printf("ENU data: \nE: %f %f %f\nN: %f %f %f\nU: %f %f %f\n",
-    ENU.row(0)(0), ENU.row(0)(1), ENU.row(0)(2),
-    ENU.row(1)(0), ENU.row(1)(1), ENU.row(1)(2),
-    ENU.row(2)(0), ENU.row(2)(1), ENU.row(2)(2));
+    ENU.col(0)(0), ENU.col(0)(1), ENU.col(0)(2),
+    ENU.col(1)(0), ENU.col(1)(1), ENU.col(1)(2),
+    ENU.col(2)(0), ENU.col(2)(1), ENU.col(2)(2));
 
     Serial.println("");
     Serial.printf("HIR data: H %f   I %f   R %f\n", corrected_shot_data.HIR(0), corrected_shot_data.HIR(1), corrected_shot_data.HIR(2));

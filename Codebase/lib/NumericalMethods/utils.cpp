@@ -66,8 +66,13 @@ Matrix3f inertialToENU(const Vector3f &m, const Vector3f &g)
     // Use cross product to generate set of real world axis in body frame
     Vector3f E, N, U;
     E = g.cross(m);
-    N = g.cross(E);
-    U = N.cross(E);
+    E.normalize();
+
+    N = E.cross(g);
+    N.normalize();
+
+    U = E.cross(N);
+    U.normalize();
 
     Serial.printf("E data: X %f   Y %f   Z %f   Norm: %f\n", E(0), E(1), E(2), E.norm());
     Serial.printf("N data: X %f   Y %f   Z %f   Norm: %f\n", N(0), N(1), N(2), N.norm());
@@ -98,14 +103,22 @@ Vector3f inertialToCardan(const Vector3f &m, const Vector3f &g)
      * Nx -> How much am I facing North?
      * atan2 (Ex, Nx) = Angle of device from North
      ****************************************************************************************/
-    HIR(0) = atan2(ENU(0,0),ENU(1,0));
+    
+    // atan2 Ex, Nx
+    Vector3f E, N, U;
+    E = ENU.col(0);
+    N = ENU.col(1);
+    U = ENU.col(2);
+
+    HIR(0) = atan2(E(0),N(0));
 
     // atan2(Ux,sqrt(Ex^2 + Nx^2)) -> Inclination of U above XZ plane
     // Alternatively atan2(Ux*cos(heading), Nx) works as sqrt(Ex^2 + Nx^2) = Nx/cos(heading)
-    HIR(1) = atan2(ENU(2,0), sqrt(pow(ENU(0,0),2) + pow(ENU(1,0),2))); // atand(y,x) -> atan2(Ux, sqrt(Ex^2 + Nx^2))
+    HIR(1) = atan2(U(0), sqrt(pow(E(0),2) + pow(N(0),2))); // atand(y,x) -> atan2(Ux, sqrt(Ex^2 + Nx^2))
 
     // Angle between device z axis and actual g measurement when projected into the YZ plane
-    HIR(2) = atan2(-ENU(2,1),ENU(2,2));
+    // atan2(-Uy, Uz)
+    HIR(2) = atan2(-U(1),U(2));
 
     // Bind data to 0 to 2*pi
     if (fabs(HIR(0)) > 2*M_PI){         HIR(0) = HIR(0) - 2*M_PI;           }

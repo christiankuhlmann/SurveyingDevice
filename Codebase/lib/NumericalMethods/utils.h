@@ -70,7 +70,7 @@ MatrixXf kron(const MatrixXf &m1, const MatrixXf &m2);
  * 
  * @param m Magnetometer data
  * @param g Gravitational data
- * @param ENU East-Noth-UP matrix ENU = [ Ex Ey Ez \ Nx Ny Nz \ Ux Uy Uz ]
+ * @param ENU East-Noth-UP matrix ENU = [ Ex Nx EUx \ Ey Ny Uy \ Ez Nz Uz ] (columns)
  * @return Matrix3f East-Noth-UP matrix
  */
 Matrix3f inertialToENU(const Vector3f &m, const Vector3f &g);
