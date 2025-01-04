@@ -22,7 +22,7 @@ void setup()
     xTaskCreatePinnedToCore(
         computehandler, /* Function to implement the task */
         "computehandler", /* Name of the task */
-        50000,  /* Stack size in words */
+        100000,  /* Stack size in words */
         NULL,  /* Task input parameter */
         1 ,  /* Priority of the task */
         &computefunc_task,  /* Task handle. */

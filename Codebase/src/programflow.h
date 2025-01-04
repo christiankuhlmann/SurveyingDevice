@@ -123,11 +123,12 @@ int getCalib()
     } else if (sh.getCalibProgress() < (N_ORIENTATIONS + N_LASER_CAL))
     {
         sh.collectLaserCalibData();
-    } else
-    {
-        sh.calibrate();
-        sh.align();
     }
+    // } else
+    // {
+    //     sh.calibrate();
+    //     sh.align();
+    // }
     return sh.getCalibProgress();
 }
 
@@ -423,7 +424,7 @@ void displayLoading(LoadingEnum loading_type)
         break;
     
     case calib_stabilising:
-        dh.displayLoading("Waiting","3s...",count);
+        dh.displayLoading("Waiting","...",count);
         break;
     }
     displayBatteryStatus();
@@ -454,9 +455,21 @@ void executeMenuAction(OLED::MenuEnum menu_action)
         sh.dumpCalibToSerial();
     break;
     
+    case OLED::MenuEnum::MENU_FORCE_CAL:
+        sh.loadCalibration();
+        sh.calibrate();
+        sh.align();
+        sh.saveCalibration();
+    break;
+
     default:
         break;
     }
 }
 
+void runCalibration(){
+    sh.calibrate();
+    sh.align();
+    sh.saveCalibration();
+}
 #endif

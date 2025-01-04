@@ -424,19 +424,22 @@ void LDK_2M::toggleLaser(bool mode)
     // Generate lidar LASER ON command and send
     // TODO: check whether receive response before changing laser status
     #ifdef DEBUG_LDK2M
-    Serial.println("LDK2M:    (Toggle laser 1/2) Toggle laser");
+    Serial.println("LDK2M:    (Toggle laser 1/3) Toggle laser");
     #endif
     
     if (mode)
     {
+        Serial.println("LDK2M:    (Toggle laser 2/3) Toggle ON");
         generateCommand(LIDAR_LASER_ON,generated_command);
         laser_on = true;
     } else {
+        Serial.println("LDK2M:    (Toggle laser 2/3) Toggle OFF");
         generateCommand(LIDAR_LASER_OFF,generated_command);
         laser_on = false;
     }
     Serial1.write(generated_command);
-    Serial.println("LDK2M:    (Toggle laser 2/2) Send command");
+    Serial1.write(generated_command);
+    Serial.println("LDK2M:    (Toggle laser 3/3) Send command");
 
     flushSerial1();
     eraseBuffer();

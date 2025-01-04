@@ -19,6 +19,8 @@ Vector3f normalVec(const Ref<const MatrixXf> &point_cloud)
     // 3rd col of U contains normal vec
     normal << left_singular_mat(0,2), left_singular_mat(1,2), left_singular_mat(2,2);
 
+    if (normal.dot(point_cloud.col(0)) < 0.0){ normal = -normal; }
+
     return normal;
 };
 

@@ -48,13 +48,30 @@ MatrixXf kron(const MatrixXf &m1, const MatrixXf &m2)
 
 Matrix3f inertialToENU(const Vector3f &m, const Vector3f &g)
 {
+    /*****************************************************
+     * 1. Sensor calibration and alignment aligns the laser axis with the x-axis.
+     *    This makes the x-axis of the device the laser axis after calibrations are applied
+     * 2. East is located at the gravoty vector crossed with the magnetic bector
+     * 3. North is located at the gravity vector crossed with the East vector
+     * 4. Up is located at the North vector crossed with the East vector
+     */
     Matrix3f ENU;
     
+
+    Serial.println("ENU");
+    Serial.printf("g data: X %f   Y %f   Z %f   Norm: %f\n", g(0), g(1), g(2), g.norm());
+    Serial.printf("m data: X %f   Y %f   Z %f   Norm: %f\n", m(0), m(1), m(2), m.norm());
+    
+
     // Use cross product to generate set of real world axis in body frame
     Vector3f E, N, U;
     E = g.cross(m);
     N = g.cross(E);
     U = N.cross(E);
+
+    Serial.printf("E data: X %f   Y %f   Z %f   Norm: %f\n", E(0), E(1), E(2), E.norm());
+    Serial.printf("N data: X %f   Y %f   Z %f   Norm: %f\n", N(0), N(1), N(2), N.norm());
+    Serial.printf("U data: X %f   Y %f   Z %f   Norm: %f\n", U(0), U(1), U(2), U.norm());
 
     ENU << E, N, U;
     return ENU;
@@ -75,14 +92,19 @@ Vector3f inertialToCardan(const Vector3f &m, const Vector3f &g)
     Vector3f HIR;
     Matrix3f ENU = inertialToENU(m, g);
 
-    // atan2(Ex,Nx) -> atan2 of north and east components of  sensor x-axis in world frame
+    /****************************************************************************************
+     * atan2(Ex,Nx) -> atan2 of north and east components of sensor x-axis in world frame
+     * Ex -> How much am I facing East?
+     * Nx -> How much am I facing North?
+     * atan2 (Ex, Nx) = Angle of device from North
+     ****************************************************************************************/
     HIR(0) = atan2(ENU(0,0),ENU(1,0));
 
-    // atan2(Ux,sqrt(Ex^2 + Nx^2)) -> Inclination of ENU above XZ plane
+    // atan2(Ux,sqrt(Ex^2 + Nx^2)) -> Inclination of U above XZ plane
     // Alternatively atan2(Ux*cos(heading), Nx) works as sqrt(Ex^2 + Nx^2) = Nx/cos(heading)
-    HIR(1) = atan2(ENU(2,0), sqrt(pow(ENU(0,0),2) + pow(ENU(1,0),2)));
+    HIR(1) = atan2(ENU(2,0), sqrt(pow(ENU(0,0),2) + pow(ENU(1,0),2))); // atand(y,x) -> atan2(Ux, sqrt(Ex^2 + Nx^2))
 
-    // Angle between device z axis and actual g measurement when projected into theYZ plane
+    // Angle between device z axis and actual g measurement when projected into the YZ plane
     HIR(2) = atan2(-ENU(2,1),ENU(2,2));
 
     // Bind data to 0 to 2*pi

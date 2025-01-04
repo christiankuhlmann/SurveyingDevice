@@ -66,11 +66,11 @@ float angle(Vector3f u, Vector3f v);
  */
 MatrixXf kron(const MatrixXf &m1, const MatrixXf &m2);
 /**
- * @brief Given a set of inetial data, return a matrix of the East, North, and Up axis with respect to the body frame
+ * @brief Given a set of inetial data, return a matrix of the East, North, and Up axis with respect to the body frame (E=x N=y U=z)
  * 
  * @param m Magnetometer data
  * @param g Gravitational data
- * @param ENU East-Noth-UP matrix
+ * @param ENU East-Noth-UP matrix ENU = [ Ex Ey Ez \ Nx Ny Nz \ Ux Uy Uz ]
  * @return Matrix3f East-Noth-UP matrix
  */
 Matrix3f inertialToENU(const Vector3f &m, const Vector3f &g);

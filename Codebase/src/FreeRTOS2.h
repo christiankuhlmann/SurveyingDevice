@@ -217,7 +217,7 @@ int extern getCalib();
 void extern saveCalib();
 void extern clearCalibration();
 void extern loadCalibration();
-
+void extern runCalibration();
 /****************************************************************
  * Program flow FSM
  ****************************************************************/
@@ -290,13 +290,13 @@ void executeAction(const uint32_t action)
 
         } else if (action == ACTION_UP_SHORT){
             if (static_cast<int>(menu_state) <= 0) {
-                menu_state = static_cast<OLED::MenuEnum>(3);
+                menu_state = static_cast<OLED::MenuEnum>(MENU_SIZE - 1);
             } else {
                 menu_state = static_cast<OLED::MenuEnum>(static_cast<int>(menu_state) - 1);
             }
 
         } else if (action == ACTION_DOWN_SHORT){
-            if (static_cast<int>(menu_state) >= 3) {
+            if (static_cast<int>(menu_state) >= MENU_SIZE - 1) {
                 menu_state = static_cast<OLED::MenuEnum>(0);
             } else {
                 menu_state = static_cast<OLED::MenuEnum>(static_cast<int>(menu_state) + 1);
@@ -311,28 +311,36 @@ void executeAction(const uint32_t action)
         case MODE_CALIB:
         if (action == ACTION_ON_SHORT)
         {
+            display_mode = DISP_CALIB_STABILISE;
+            delay(1000);
             Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Getting calibration");
             if (calib_progress == 2 || calib_progress == 3)
             {
                 display_mode = DISP_CALIB_STABILISE;
-                delay(3000); // If facing down delay 3s before taking measurement
+                delay(4000); // If facing down delay 3s before taking measurement
             }
 
             display_mode = DISP_CALIB_LOADING;
             calib_progress = getCalib();
             laserBeep();
+
             if (calib_progress >= (N_ORIENTATIONS + N_LASER_CAL))
             {
+                runCalibration();
                 next_mode = MODE_CALIB_SAVE_YN;
                 display_mode = DISP_CALIB_SAVE;
             } else if (calib_progress >= N_ORIENTATIONS) {
                 next_mode = MODE_CALIB;
                 display_mode = DISP_LASER_CALIB;
                 laserOn();
+                laserOn();
             } else {
                 next_mode = MODE_CALIB;
                 display_mode = DISP_STATIC_CALIB; 
+                laserOff();
+                laserOff();
             }
+
         } else if (action == ACTION_MODE_SHORT){
             Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: IDLE");
             // clearCalibration();
@@ -345,6 +353,7 @@ void executeAction(const uint32_t action)
                 next_mode = MODE_CALIB_EXIT;
                 display_mode = DISP_CALIB_EXIT;
             } else {
+                loadCalibration();
                 next_mode = MODE_IDLE;
                 display_mode = DISP_IDLE;
             }
@@ -372,6 +381,8 @@ void executeAction(const uint32_t action)
          *                                    SAVE CALIBRATION MODE
          ************************************************************************************************/
         case MODE_CALIB_SAVE_YN:
+        laserOff();
+        laserOff();
         if (action == ACTION_ON_SHORT)
         {
             if(y_n_selector) saveCalib();

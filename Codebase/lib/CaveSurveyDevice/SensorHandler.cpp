@@ -92,6 +92,7 @@ void SensorHandler::init()
     las.init();
 
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading calibration...");
+    resetCalibration();
     loadCalibration();
 }
 
@@ -123,8 +124,30 @@ void SensorHandler::update()
 
     // Store corrected data in corrected_acc_data and corrected_mag_data
     correctData(corrected_shot_data.m, corrected_shot_data.g);
+
+
+    Matrix3f ENU;
+    ENU = NumericalMethods::inertialToENU(corrected_shot_data.m,corrected_shot_data.g);
     corrected_shot_data.HIR = NumericalMethods::inertialToCardan(corrected_shot_data.m,corrected_shot_data.g);
     corrected_shot_data.v = NumericalMethods::inertialToVector(corrected_shot_data.m,corrected_shot_data.g);
+
+    Serial.println("");
+    Serial.printf("Raw acc data: X %f   Y %f   Z %f   Norm: %f\n", acc_data(0), acc_data(1), acc_data(2), acc_data.norm());
+    Serial.printf("Raw mag data: X %f   Y %f   Z %f   Norm: %f\n", mag_data(0), mag_data(1), mag_data(2), mag_data.norm());
+    
+    Serial.println("");
+    Serial.printf("Corrected acc data: X %f   Y %f   Z %f   Norm: %f\n", corrected_shot_data.g(0), corrected_shot_data.g(1), corrected_shot_data.g(2), corrected_shot_data.g.norm());
+    Serial.printf("Corrected mag data: X %f   Y %f   Z %f   Norm: %f\n", corrected_shot_data.m(0), corrected_shot_data.m(1), corrected_shot_data.m(2), corrected_shot_data.m.norm());
+    
+    Serial.println("");
+    Serial.printf("ENU data: \nE: %f %f %f\nN: %f %f %f\nU: %f %f %f\n",
+    ENU.row(0)(0), ENU.row(0)(1), ENU.row(0)(2),
+    ENU.row(1)(0), ENU.row(1)(1), ENU.row(1)(2),
+    ENU.row(2)(0), ENU.row(2)(1), ENU.row(2)(2));
+
+    Serial.println("");
+    Serial.printf("HIR data: H %f   I %f   R %f\n", corrected_shot_data.HIR(0), corrected_shot_data.HIR(1), corrected_shot_data.HIR(2));
+    Serial.println("");
 }
 
 Vector3f SensorHandler::getCardan(bool corrected)
@@ -219,8 +242,25 @@ int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisati
 
 void SensorHandler::correctData(Vector3f &m, Vector3f &g)
 {
-    m = calib_parms.Rm_las * calib_parms.Rm_cal * (mag_data - calib_parms.bm_cal);
-    g = calib_parms.Ra_las * calib_parms.Ra_cal * (acc_data - calib_parms.ba_cal);
+    // Serial.printf("Rm_align: %f %f %f\n", calib_parms.Rm_align(0), calib_parms.Rm_align(1), calib_parms.Rm_align(2));
+    // Serial.printf("Rm_las: %f %f %f\n", calib_parms.Rm_las(0), calib_parms.Rm_las(1), calib_parms.Rm_las(2));
+    // Serial.printf("Rm_cal: %f %f %f\n", calib_parms.Rm_cal(0), calib_parms.Rm_cal(1), calib_parms.Rm_cal(2));
+
+    // Apply sensor calibration
+    m = calib_parms.Rm_cal * (mag_data - calib_parms.bm_cal);
+    g = calib_parms.Ra_cal * (acc_data - calib_parms.ba_cal);
+
+    // Normalise data
+    m.colwise().normalize();
+    g.colwise().normalize();
+
+    // Apply alignment
+    m = calib_parms.Rm_align * calib_parms.Rm_las * m; 
+    g = calib_parms.Ra_las * g;
+
+    // Apply final normalisation
+    m.colwise().normalize();
+    g.colwise().normalize();
 }
 
 void SensorHandler::eraseFlash()
@@ -293,11 +333,120 @@ int SensorHandler::calibrate()
 }
 int SensorHandler::align()
 {
+
+    // ------------------------------ Run laser alignment ------------------------------
+    // Using collected data, apply calibration corrections
     Matrix<float,3,N_LASER_CAL> temp_acc_data = calib_parms.Ra_cal * (laser_calib_data.acc_data.colwise() - calib_parms.ba_cal);
     Matrix<float,3,N_LASER_CAL> temp_mag_data = calib_parms.Rm_cal * (laser_calib_data.mag_data.colwise() - calib_parms.bm_cal);
 
+    // Normalise data as calibration should lead to normalised data
+    temp_acc_data.colwise().normalize();
+    temp_mag_data.colwise().normalize();
+
+    // Run laser alignment
     NumericalMethods::alignToNorm(temp_acc_data, calib_parms.Ra_las);
-    NumericalMethods::alignToNorm(temp_acc_data, calib_parms.Ra_las);
+    NumericalMethods::alignToNorm(temp_mag_data, calib_parms.Rm_las);
+
+    // ------------------------------ Run MAG.I.CAL alignment ------------------------------
+    static Matrix<float,3,N_ALIGN_MAG_ACC> acc_magical_data, mag_magical_data;
+
+    // Apply calibration correction
+    acc_magical_data = calib_parms.Ra_cal * (static_calib_data.acc_data.colwise() - calib_parms.ba_cal);
+    mag_magical_data = calib_parms.Rm_cal * (static_calib_data.mag_data.colwise() - calib_parms.bm_cal);
+
+    // Normalise data
+    acc_magical_data.colwise().normalize();
+    mag_magical_data.colwise().normalize();
+
+    // Apply laser alignment
+    acc_magical_data = calib_parms.Ra_las * acc_magical_data;
+    mag_magical_data = calib_parms.Rm_las * mag_magical_data;
+    
+    // Calculate MAG.I.CAL alignment
+    NumericalMethods::alignMagAcc(
+        acc_magical_data, 
+        mag_magical_data, 
+        calib_parms.Rm_align, calib_parms.inclination_angle);
+
+    Vector3f temp1, temp2;
+    // temp1 = NumericalMethods::normalVec(temp_acc_data);
+    // temp2 = NumericalMethods::normalVec(calib_parms.Ra_las * temp_acc_data);
+    // Serial.printf("Acc Matrix: \n %f %f %f \n %f %f %f \n %f %f %f \n\n", 
+    // calib_parms.Ra_las(0,0), calib_parms.Ra_las(0,1), calib_parms.Ra_las(0,2),
+    // calib_parms.Ra_las(1,0), calib_parms.Ra_las(1,1), calib_parms.Ra_las(1,2),
+    // calib_parms.Ra_las(2,0), calib_parms.Ra_las(2,1), calib_parms.Ra_las(2,2));
+    // Serial.printf("Original acc norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
+    // Serial.printf("Corrected acc norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
+    // Serial.println("");
+
+    // temp1 = NumericalMethods::normalVec(temp_mag_data);
+    // temp2 = NumericalMethods::normalVec(calib_parms.Rm_las * temp_mag_data);
+    // Serial.printf("Mag Matrix: \n %f %f %f \n %f %f %f \n %f %f %f \n\n", 
+    // calib_parms.Rm_las(0,0), calib_parms.Rm_las(0,1), calib_parms.Rm_las(0,2),
+    // calib_parms.Rm_las(1,0), calib_parms.Rm_las(1,1), calib_parms.Rm_las(1,2),
+    // calib_parms.Rm_las(2,0), calib_parms.Rm_las(2,1), calib_parms.Rm_las(2,2));
+    // Serial.printf("Original mag norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
+    // Serial.printf("Corrected mag norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
+    // Serial.println("");
+
+    temp1 = NumericalMethods::normalVec(temp_acc_data);
+    temp2 = NumericalMethods::normalVec(temp_mag_data);
+    Serial.printf("Corrected acc norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
+    Serial.printf("Corrected mag norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
+
+    temp1 = NumericalMethods::normalVec(calib_parms.Ra_las * temp_acc_data);
+    temp2 = NumericalMethods::normalVec(calib_parms.Rm_align * calib_parms.Rm_las * temp_mag_data);
+
+    if (temp2(0)<0) calib_parms.Rm_align = -1 * calib_parms.Rm_align;
+    temp2 = NumericalMethods::normalVec(calib_parms.Rm_align * calib_parms.Rm_las * temp_mag_data);
+
+
+    Serial.printf("Aligned acc norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
+    Serial.printf("Aligned mag norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
+
+    Serial.printf("Inclination angle: %f\n", calib_parms.inclination_angle);
+    Serial.println("");
+
+    Vector3f a, b;
+    float temp;
+    for (int i=0; i<N_ALIGN_MAG_ACC; i++)
+    {
+        a = calib_parms.Rm_align * mag_magical_data.col(i);
+        b = acc_magical_data.col(i);
+        temp = acos(a.dot(b) / (a.norm() * b.norm()));
+        Serial.printf("Angle: %f\n", RAD_TO_DEG * temp);
+    }
+
+    // // ------------------------------ Second alignment ------------------------------
+    // Matrix3f Ra_las2, Rm_las2, Rm_align2;
+    // float inclination_angle2;
+
+    // temp_acc_data = calib_parms.Ra_las * temp_acc_data;
+    // temp_mag_data = calib_parms.Rm_align * calib_parms.Rm_las * temp_mag_data;
+    // NumericalMethods::alignToNorm(temp_acc_data, Ra_las2);
+    // NumericalMethods::alignToNorm(temp_mag_data, Rm_las2);
+
+    // acc_magical_data = Ra_las2 * acc_magical_data;
+    // mag_magical_data = Rm_las2 * calib_parms.Rm_align * mag_magical_data;
+    // NumericalMethods::alignMagAcc(
+    //     acc_magical_data, 
+    //     mag_magical_data, 
+    //     Rm_align2, inclination_angle2);
+
+    // temp1 = NumericalMethods::normalVec(Ra_las2 * temp_acc_data);
+    // temp2 = NumericalMethods::normalVec(Rm_align2 * Rm_las2 * temp_mag_data);
+    // Serial.printf("Aligned acc norm2: %f %f %f \n", temp1(0), temp1(1), temp1(2));
+    // Serial.printf("Aligned mag norm2: %f %f %f \n", temp2(0), temp2(1), temp2(2));
+    // Serial.printf("Inclination angle2: %f\n", inclination_angle2);
+
+
+    // for (int i=0; i<N_ALIGN_MAG_ACC; i++)
+    // {
+    //     a = Rm_align2 * mag_magical_data.col(i);
+    //     b = acc_magical_data.col(i);
+    //     temp = acos(a.dot(b) / (a.norm() * b.norm()));
+    //     Serial.printf("Angle: %f\n", RAD_TO_DEG * temp);
+    // }
 
     return 0;
 }
@@ -316,6 +465,8 @@ void SensorHandler::saveCalibration()
 
     EigenFileFuncs::writeToFile("calib_parms","Ra_las", calib_parms.Ra_las);
     EigenFileFuncs::writeToFile("calib_parms","Rm_las", calib_parms.Rm_las);
+    EigenFileFuncs::writeToFile("calib_parms","Rm_align", calib_parms.Rm_align);
+
 }
 void SensorHandler::loadCalibration()
 {
@@ -331,6 +482,8 @@ void SensorHandler::loadCalibration()
 
     EigenFileFuncs::readFromFile("calib_parms","Ra_las", calib_parms.Ra_las);
     EigenFileFuncs::readFromFile("calib_parms","Rm_las", calib_parms.Rm_las);
+    EigenFileFuncs::readFromFile("calib_parms","Rm_align", calib_parms.Rm_align);
+
 }
 
 void SensorHandler::removePrevCalib(bool static_calib)

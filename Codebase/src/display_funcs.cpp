@@ -455,6 +455,7 @@ void DisplayHandler::displayMenu(OLED::MenuEnum menu_state)
 	drawLeft(menu_arr[1],1,TOP_BAR_HEIGHT+35, &Font12, WHITE, !(menu_state == 1) * WHITE);
 	drawLeft(menu_arr[2],1,TOP_BAR_HEIGHT+50, &Font12, WHITE, !(menu_state == 2) * WHITE);
 	drawLeft(menu_arr[3],1,TOP_BAR_HEIGHT+65, &Font12, WHITE, !(menu_state == 3) * WHITE);
+	drawLeft(menu_arr[4],1,TOP_BAR_HEIGHT+80, &Font12, WHITE, !(menu_state == 4) * WHITE);
 }
 
 // void DisplayHandler::drawBlutooth(bool ble_status)

@@ -15,6 +15,7 @@ namespace OLED
 #define INCLINATION_LOCATION_Y TOP_BAR_HEIGHT + WORD_SPACING + 5
 #define DISTANCE_LOCATION_Y TOP_BAR_HEIGHT + WORD_SPACING*2 + 5
 
+#define MENU_SIZE 5
 
 struct Point
 {
@@ -76,10 +77,11 @@ enum MenuEnum
     MENU_DUMP_DATA = 0,
     MENU_BLUETOOTH = 1,
     MENU_NEW_SURVEY = 2,
-    MENU_CHANGE_SURVEY = 3
+    MENU_CHANGE_SURVEY = 3,
+    MENU_FORCE_CAL = 4
 };
 
-const char menu_arr [4][10] = {"Dump Cal", "Bluetooth", "New srvy", "Chg srvy"};
+const char menu_arr [MENU_SIZE][10] = {"Dump Cal", "Bluetooth", "New srvy", "Chg srvy", "Frc cal"};
 
 
 class DisplayHandler {
