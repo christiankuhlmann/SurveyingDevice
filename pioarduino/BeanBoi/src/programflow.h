@@ -114,8 +114,13 @@ void laserBeep()
 
 int takeShot()
 {
-    sc_laser.beep();
-    return sh.takeShot();
+    // Only beep if the shot was taken successfully
+    if (!sh.takeShot()) {
+        sc_laser.beep();
+        return 0;
+    } else {
+        return 1;
+    }
 }
 
 int getCalib()
