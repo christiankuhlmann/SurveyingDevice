@@ -502,9 +502,12 @@ void startDisplayTimer()
     // timerAttachInterrupt(displayTimer_cfg, &displayTimerISR, true);
     // timerAlarmWrite(displayTimer_cfg, DISPLAY_TICKS, true);
     // timerAlarmEnable(displayTimer_cfg);
+
+    // Using arduino version >= 3
     displayTimer_cfg = timerBegin(DISPLAY_TMR_HZ);
     timerAttachInterrupt(displayTimer_cfg,&displayTimerISR);
     timerAlarm(displayTimer_cfg,DISPLAY_TICKS,true,UINT64_MAX);
+
     // configTASK_NOTIFICATION_ARRAY_ENTRIES
 }
 
