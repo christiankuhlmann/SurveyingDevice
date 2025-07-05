@@ -548,6 +548,10 @@ void initialise_device()
     sh.update();
 
     initDisplayHandler();
+}
+
+void initialise_interrupts()
+{
     initInterrupts();
     startDisplayTimer();
 }
@@ -613,7 +617,6 @@ void computehandler(void* parameter)
 {
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start computehandler");
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Initialising device...");
-    initialise_device();
     sc_accelerometer.getMeasurement();
     while(true)
     {

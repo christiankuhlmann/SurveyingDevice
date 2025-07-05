@@ -7,16 +7,7 @@ void setup()
     Serial.begin(115200);
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Begin beaning...");
 
-    delay(1000);
-    xTaskCreatePinnedToCore(
-        inputhandler, /* Function to implement the task */
-        "inputhandler", /* Name of the task */
-        10000,  /* Stack size in words */
-        NULL,  /* Task input parameter */
-        2 ,  /* Priority of the task */
-        &inputhandler_task,  /* Task handle. */
-        0); /* Core where the task should run */
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Inputhandler started sucessfully");
+    initialise_device();
 
     delay(500);
     xTaskCreatePinnedToCore(
@@ -31,6 +22,17 @@ void setup()
 
     delay(500);
     xTaskCreatePinnedToCore(
+        inputhandler, /* Function to implement the task */
+        "inputhandler", /* Name of the task */
+        10000,  /* Stack size in words */
+        NULL,  /* Task input parameter */
+        2 ,  /* Priority of the task */
+        &inputhandler_task,  /* Task handle. */
+        0); /* Core where the task should run */
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Inputhandler started sucessfully");
+
+    delay(500);
+    xTaskCreatePinnedToCore(
         displayhandler, /* Function to implement the task */
         "displayhandler", /* Name of the task */
         10000,  /* Stack size in words */
@@ -42,15 +44,7 @@ void setup()
 
     startBLETask();
 
-    // delay(250);
-    // xTaskCreatePinnedToCore(
-    //     inithandler, /* Function to implement the task */
-    //     "init", /* Name of the task */
-    //     10000,  /* Stack size in words */
-    //     NULL,  /* Task input parameter */
-    //     tskIDLE_PRIORITY ,  /* Priority of the task */
-    //     &init_task,  /* Task handle. */
-    //     0); /* Core where the task should run */
+    initialise_interrupts();
 }
 
 // extern "C" void app_main()
