@@ -20,7 +20,7 @@ inline RM3100SensorConnection::RM3100SensorConnection(RM3100 &rm3100):rm3100_con
 
 inline void RM3100SensorConnection::init()
 {
-    rm3100_connection.begin();
+    rm3100_connection.begin(false);  // Disable DRDY pin usage, use status register instead
 }
 
 inline Vector3f RM3100SensorConnection::getMeasurement()

@@ -88,10 +88,18 @@ void RM3100::update() {
 
   //wait until data is ready using 1 of two methods (chosen in options at top of code)
   if(useDRDYPin){ 
-    while(digitalRead(pin_drdy) == LOW); //check RDRY pin
+    unsigned long timeout = millis() + 1000; // 1 second timeout
+    while(digitalRead(pin_drdy) == LOW && millis() < timeout); //check RDRY pin
+    if(millis() >= timeout) {
+      Serial.println("RM3100: DRDY pin timeout, data may be stale");
+    }
   }
   else{
-    while((readReg(RM3100_STATUS_REG) & 0x80) != 0x80); //read internal status register
+    unsigned long timeout = millis() + 1000; // 1 second timeout
+    while((readReg(RM3100_STATUS_REG) & 0x80) != 0x80 && millis() < timeout); //read internal status register
+    if(millis() >= timeout) {
+      Serial.println("RM3100: Status register timeout, data may be stale");
+    }
   }
 
   Wire.beginTransmission(RM3100Address);
