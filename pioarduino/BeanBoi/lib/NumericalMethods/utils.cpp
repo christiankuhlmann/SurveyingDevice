@@ -55,14 +55,8 @@ Matrix3f inertialToENU(const Vector3f &m, const Vector3f &g)
      * 3. North is located at the gravity vector crossed with the East vector
      * 4. Up is located at the North vector crossed with the East vector
      */
-    Matrix3f ENU;
+    static Matrix3f ENU;  // Static allocation to reduce stack usage
     
-
-    Serial.println("ENU");
-    Serial.printf("g data: X %f   Y %f   Z %f   Norm: %f\n", g(0), g(1), g(2), g.norm());
-    Serial.printf("m data: X %f   Y %f   Z %f   Norm: %f\n", m(0), m(1), m(2), m.norm());
-    
-
     // Use cross product to generate set of real world axis in body frame
     Vector3f E, N, U;
     E = g.cross(m);
@@ -74,18 +68,16 @@ Matrix3f inertialToENU(const Vector3f &m, const Vector3f &g)
     U = E.cross(N);
     U.normalize();
 
-    Serial.printf("E data: X %f   Y %f   Z %f   Norm: %f\n", E(0), E(1), E(2), E.norm());
-    Serial.printf("N data: X %f   Y %f   Z %f   Norm: %f\n", N(0), N(1), N(2), N.norm());
-    Serial.printf("U data: X %f   Y %f   Z %f   Norm: %f\n", U(0), U(1), U(2), U.norm());
-
     ENU << E, N, U;
     return ENU;
 }
 
 Vector3f inertialToVector(const Vector3f &m, const Vector3f &g)
 {
-    Vector3f V;
-    Matrix3f ENU = inertialToENU(m, g);
+    static Vector3f V;  // Static allocation
+    static Matrix3f ENU;  // Static allocation
+    
+    ENU = inertialToENU(m, g);
 
     // Extract the x values of each axis to find the x-axis in the world frame
     V << ENU(0,0), ENU(1,0), ENU(2,0);
@@ -94,8 +86,9 @@ Vector3f inertialToVector(const Vector3f &m, const Vector3f &g)
 
 Vector3f inertialToCardan(const Vector3f &m, const Vector3f &g)
 {
-    Vector3f HIR;
-    Matrix3f ENU = inertialToENU(m, g);
+    static Vector3f HIR;
+    static Matrix3f ENU;
+    static Vector3f E, N, U;
 
     /****************************************************************************************
      * atan2(Ex,Nx) -> atan2 of north and east components of sensor x-axis in world frame
@@ -103,9 +96,9 @@ Vector3f inertialToCardan(const Vector3f &m, const Vector3f &g)
      * Nx -> How much am I facing North?
      * atan2 (Ex, Nx) = Angle of device from North
      ****************************************************************************************/
-    
+    ENU = inertialToENU(m, g);
     // atan2 Ex, Nx
-    Vector3f E, N, U;
+    
     E = ENU.col(0);
     N = ENU.col(1);
     U = ENU.col(2);
@@ -140,7 +133,13 @@ int sign(const float &f)
 
 float stDev(const VectorXf &vec)
 {
-    return sqrt((vec.array() - vec.mean()).square().sum()/(vec.size()-1));
+    static float mean_val;  // Static allocation for intermediate values
+    static float sum_sq_diff;
+    
+    mean_val = vec.mean();
+    sum_sq_diff = (vec.array() - mean_val).square().sum();
+    
+    return sqrt(sum_sq_diff / (vec.size() - 1));
 }
 
 template <typename Derived>
