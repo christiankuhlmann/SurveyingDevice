@@ -19,7 +19,7 @@ using namespace Eigen;
 const int N_MAG_CAL_HEADING = 25; // Size of magnetometer calibration matrix
 const int N_MAG_CAL_INCLINATION = 15; // Size of magnetometer calibration matrix
 const int N_MAG_CAL = N_MAG_CAL_HEADING * N_MAG_CAL_INCLINATION;
-const int N_SHOT_SMAPLES = 100;
+const int N_SHOT_SAMPLES = 100;
 const int N_UPDATE_SAMPLES = 10;
 const float STDEV_LIMIT = 0.05;
 const int N_STABILISATION = 10;
@@ -61,7 +61,7 @@ private:
     bool MAG_COMBINED_CAL = true; // Calibrate magnetometer separately to alignment
 
     int static_calib_progress; // Goes from 0 to N_ORIENTATIONS
-    int las_calib_progress; // Goes from 0 to N_LASER_CALIB
+    int las_calib_progress; // Goes from 0 to N_LASER_CAL
 
     // Sensor objects - define as reference to object otherwise full mem is allocated (bad)
     Accelerometer &acc;
@@ -141,6 +141,7 @@ public:
     int calibrate();
     int align();
     int staticAlign();
+    void validateCalibrationQuality();
 
     Vector2f getDirection();
     ShotData getShotData(bool corrected = true);
