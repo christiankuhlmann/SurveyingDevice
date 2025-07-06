@@ -1,4 +1,5 @@
 #include "debug_csd.h"
+#include <stdarg.h>
 
 namespace Debug_csd
 {
@@ -18,10 +19,11 @@ void debugf(unsigned int mode, const char *format, ...)
     if ((int)mode == 0 || (DEBUG_BOOL_ARR[(int)mode] && sizeof(format) < 250*sizeof(char)))
     {
         va_list args;
+        va_start(args, format);
         Serial.printf("%s: ", DEBUG_STR_ARR[(int)mode]);
-        Serial.printf(format, args);
+        Serial.vprintf(format, args);
         Serial.print("\n");
-
+        va_end(args);
     }
 }
 
