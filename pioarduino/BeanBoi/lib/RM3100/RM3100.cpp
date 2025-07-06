@@ -149,31 +149,7 @@ void RM3100::update() {
   this->mag_data.x_ut = ((float)(x)/gain);// / 45.;
   this->mag_data.y_ut = ((float)(y)/gain);// / 45.;
   this->mag_data.z_ut = ((float)(z)/gain);// / 45.;
-
-  // Serial.printf("RM3100 data [    %f    %f    %f    ]\n", mag_data.x_ut, mag_data.y_ut, mag_data.z_ut);
-
-  // //display results
-  // Serial.print("Data in counts:");
-  // Serial.print("   X:");
-  // Serial.print(x);
-  // Serial.print("   Y:");
-  // Serial.print(y);
-  // Serial.print("   Z:");
-  // Serial.println(z);
-
-  // Serial.print("Data in microTesla(uT):");
-  // Serial.print("   X:");
-  // Serial.print((float)(x)/gain);
-  // Serial.print("   Y:");
-  // Serial.print((float)(y)/gain);
-  // Serial.print("   Z:");
-  // Serial.println((float)(z)/gain);
-
-  // //Magnitude should be around 45 uT (+/- 15 uT)
-  // Serial.print("Magnitude(uT):");
-  // Serial.println(uT);
-  // Serial.println();  
-
+  // Serial.printf("RM3100: x: %ld, y: %ld, z: %ld, uT: %f\n", x, y, z, uT);
 }
 
 RM3100::RM3100(){}
