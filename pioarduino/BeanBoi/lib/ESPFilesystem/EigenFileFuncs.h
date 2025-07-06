@@ -18,11 +18,20 @@ inline void writeToFile(const char* fname, const char* name, const Ref<const Mat
   preferences.end();
 }
 
-inline void readFromFile(const char* fname, const char* name, Ref<MatrixXf> mat)
+inline bool readFromFile(const char* fname, const char* name, Ref<MatrixXf> mat)
 {
   preferences.begin(fname, false);
-  preferences.getBytes(name,mat.data(),mat.size()*sizeof(float));
+  size_t expected_size = mat.size() * sizeof(float);
+  size_t actual_size = preferences.getBytesLength(name);
+  
+  if (actual_size == 0 || actual_size != expected_size) {
+    preferences.end();
+    return false; // Data doesn't exist or size mismatch
+  }
+  
+  preferences.getBytes(name, mat.data(), expected_size);
   preferences.end();
+  return true; // Success
 }
 
 
