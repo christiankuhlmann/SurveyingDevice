@@ -27,9 +27,10 @@ inline Vector3f RM3100SensorConnection::getMeasurement()
 {
     rm3100_connection.update();
     Vector3f data;
-    // Div by 45 to come closer to normalised
-    // Convert from NED to ENU
-    data << rm3100_connection.getX()/50, -rm3100_connection.getY()/50, -rm3100_connection.getZ()/50;
+    // Div by 50 to come closer to normalised
+    // RM3100 physical mounting requires [X, -Y, -Z] transformation
+    // Due to sensor orientation on PCB, this aligns better with device ENU than standard NED->ENU conversion
+    data << rm3100_connection.getX()/50.0, -rm3100_connection.getY()/50.0, -rm3100_connection.getZ()/50.0;
     // Serial << "RM3100 data: ";
     // displayRowVec(data);
     return data;
