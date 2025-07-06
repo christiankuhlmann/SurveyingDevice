@@ -20,7 +20,7 @@ const int N_MAG_CAL_HEADING = 25; // Size of magnetometer calibration matrix
 const int N_MAG_CAL_INCLINATION = 15; // Size of magnetometer calibration matrix
 const int N_MAG_CAL = N_MAG_CAL_HEADING * N_MAG_CAL_INCLINATION;
 const int N_SHOT_SMAPLES = 100;
-const int N_UPDATE_SAMPLES = 25;
+const int N_UPDATE_SAMPLES = 10;
 const float STDEV_LIMIT = 0.05;
 const int N_STABILISATION = 10;
 
