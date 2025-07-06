@@ -1,5 +1,5 @@
 #include "LDK_2M.h"
-#define DEBUG_LDK2M
+// #define DEBUG_LDK2M
 
 // Utility functions
 void LDK_2M::flushSerial1()
