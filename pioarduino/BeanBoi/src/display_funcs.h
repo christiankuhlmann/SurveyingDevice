@@ -92,6 +92,7 @@ class DisplayHandler {
     void drawDistance(float distance);
     void drawHeading(float heading);
     void drawInclination(float inclination);
+    void drawRoll(float roll);
     void drawSensorCalStatus(int sensor_status);
     void drawBlutooth(bool ble_status);
     void drawBattery(int batt_percentage);

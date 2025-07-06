@@ -71,6 +71,13 @@ void DisplayHandler::drawInclination(float inclination)
     Paint_DrawString_EN(X_MARGIN, INCLINATION_LOCATION_Y, disp_str, &Font12, WHITE, WHITE);
 }
 
+void DisplayHandler::drawRoll(float roll)
+{
+	char disp_str[10];
+	sprintf(disp_str,"R:%5.1f", roll);
+	Paint_DrawString_EN(X_MARGIN, DISTANCE_LOCATION_Y, disp_str, &Font12, WHITE, WHITE);
+}
+
 void DisplayHandler::drawDistance(float distance) {
     char disp_str[10];
     sprintf(disp_str,"D:%5.1f", distance);
