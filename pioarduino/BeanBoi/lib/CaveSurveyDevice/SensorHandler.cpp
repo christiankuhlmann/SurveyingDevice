@@ -118,6 +118,7 @@ void SensorHandler::update()
     {
         mag_data += mag.getMeasurement();
         acc_data += acc.getMeasurement();
+        // taskYIELD(); // Yield to other tasks
     }
     mag_data /= N_UPDATE_SAMPLES;
     acc_data /= N_UPDATE_SAMPLES;
