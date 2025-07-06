@@ -85,10 +85,10 @@ class DataRcvCallback : public NimBLECharacteristicCallbacks {
     }
 };
 
+  
 
 
 
-                
 
 // BLE task function (runs on core 1)
 void bleTask(void* parameter) {
