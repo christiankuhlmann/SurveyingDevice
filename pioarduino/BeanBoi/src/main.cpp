@@ -24,7 +24,7 @@ void setup()
     xTaskCreatePinnedToCore(
         inputhandler, /* Function to implement the task */
         "inputhandler", /* Name of the task */
-        10000,  /* Stack size in words */
+        2500,  /* Stack size in words */
         NULL,  /* Task input parameter */
         2 ,  /* Priority of the task */
         &inputhandler_task,  /* Task handle. */
@@ -35,7 +35,7 @@ void setup()
     xTaskCreatePinnedToCore(
         displayhandler, /* Function to implement the task */
         "displayhandler", /* Name of the task */
-        10000,  /* Stack size in words */
+        2500,  /* Stack size in words */
         NULL,  /* Task input parameter */
         3 ,  /* Priority of the task */
         &displayhandler_task,  /* Task handle. */
