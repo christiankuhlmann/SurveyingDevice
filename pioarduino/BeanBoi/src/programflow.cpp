@@ -400,10 +400,29 @@ void executeMenuAction(OLED::MenuEnum menu_action)
     break;
     
     case OLED::MenuEnum::MENU_FORCE_CAL:
-        sh.loadCalibration();
+        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "FORCE_CAL start - Free heap: %u, Largest block: %u", 
+                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        
+        // Add a small delay to allow any pending operations to complete
+        vTaskDelay(pdMS_TO_TICKS(100));
+        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After delay - Free heap: %u, Largest block: %u", 
+                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        
+        sh.loadRawCalibrationData();  // Only load raw data, not computed parameters
+        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loadRawCalibrationData - Free heap: %u, Largest block: %u", 
+                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        
         sh.calibrate();
+        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After calibrate - Free heap: %u, Largest block: %u", 
+                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        
         sh.align();
+        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After align - Free heap: %u, Largest block: %u", 
+                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+        
         sh.saveCalibration();
+        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "FORCE_CAL complete - Free heap: %u, Largest block: %u", 
+                         ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     break;
 
     default:
