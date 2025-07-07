@@ -106,6 +106,7 @@ public:
     void resetCalibration();
     void saveCalibration();
     void loadCalibration();
+    void loadRawCalibrationData();
     void removePrevCalib(bool static_calib);
     int getCalibProgress();
     int getCalibProgress(bool static_calib);

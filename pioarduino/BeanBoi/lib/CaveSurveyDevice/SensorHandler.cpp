@@ -340,11 +340,24 @@ int SensorHandler::collectLaserCalibData()
 
 int SensorHandler::calibrate()
 {
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate start - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
     Vector<float,10> Um = NumericalMethods::fitEllipsoid(static_calib_data.mag_data);
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After mag fitEllipsoid - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
     NumericalMethods::calculateEllipsoidTransformation(Um, calib_parms.Rm_cal, calib_parms.bm_cal);
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After mag transformation - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
     Vector<float,10> Ua = NumericalMethods::fitEllipsoid(static_calib_data.acc_data);
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After acc fitEllipsoid - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
     NumericalMethods::calculateEllipsoidTransformation(Ua, calib_parms.Ra_cal, calib_parms.ba_cal);
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate complete - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     
     return 0;
 }
@@ -485,11 +498,13 @@ void SensorHandler::saveCalibration()
     EigenFileFuncs::writeToFile("calib_parms","Rm_align", calib_parms.Rm_align);
     
     // Save the inclination angle
-    FileFuncs::writeToFile("calib_parms","inclination_angle", calib_parms.inclination_angle);
+    FileFuncs::writeToFile("calib_parms","inc_angle", calib_parms.inclination_angle);
 }
 void SensorHandler::loadCalibration()
 {
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading calibration data from NVS...");
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "loadCalibration start - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     
     bool calibration_loaded = true;
     
@@ -498,10 +513,15 @@ void SensorHandler::loadCalibration()
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static accelerometer calibration data not found");
         calibration_loaded = false;
     }
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static acc data - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
     if (!EigenFileFuncs::readFromFile("static_calib","mag_data", static_calib_data.mag_data)) {
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static magnetometer calibration data not found");
         calibration_loaded = false;
     }
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static mag data - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     if (!EigenFileFuncs::readFromFile("laser_calib","acc_data", laser_calib_data.acc_data)) {
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser accelerometer calibration data not found");
         calibration_loaded = false;
@@ -542,7 +562,7 @@ void SensorHandler::loadCalibration()
     }
     
     // Load the inclination angle
-    if (!FileFuncs::readFromFile("calib_parms","inclination_angle", calib_parms.inclination_angle)) {
+    if (!FileFuncs::readFromFile("calib_parms","inc_angle", calib_parms.inclination_angle)) {
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Inclination angle not found");
         calibration_loaded = false;
     }
@@ -671,5 +691,52 @@ void SensorHandler::dumpCalibToSerial()
 
     serializeJson(root,Serial);
 
+    Serial.println("\nInclination angle:");
+    Serial.println(getCalibParms().inclination_angle);
+
+}
+
+void SensorHandler::loadRawCalibrationData()
+{
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading raw calibration data from NVS...");
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "loadRawCalibrationData start - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
+    bool data_loaded = true;
+    
+    // Only load the raw sensor data needed for calibration - not the computed parameters
+    if (!EigenFileFuncs::readFromFile("static_calib","acc_data", static_calib_data.acc_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static accelerometer calibration data not found");
+        data_loaded = false;
+    }
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static acc data - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
+    if (!EigenFileFuncs::readFromFile("static_calib","mag_data", static_calib_data.mag_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static magnetometer calibration data not found");
+        data_loaded = false;
+    }
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static mag data - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
+    if (!EigenFileFuncs::readFromFile("laser_calib","acc_data", laser_calib_data.acc_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser accelerometer calibration data not found");
+        data_loaded = false;
+    }
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading laser acc data - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
+    if (!EigenFileFuncs::readFromFile("laser_calib","mag_data", laser_calib_data.mag_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser magnetometer calibration data not found");
+        data_loaded = false;
+    }
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading laser mag data - Free heap: %u, Largest block: %u", 
+                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+    
+    if (data_loaded) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Raw calibration data loaded successfully");
+    } else {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Some raw calibration data missing - FORCE_CAL may fail");
+    }
 }
 
