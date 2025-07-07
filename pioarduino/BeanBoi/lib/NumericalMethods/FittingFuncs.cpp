@@ -53,8 +53,10 @@ RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
 
     // This could end up being very large! Be careful!
     // Check limits on available memory!
-    // Remaining stack size MUST be greater than  n_samples x 10 x 4bytes!
-    MatrixXf D_T(n_samples,10);
+    // Use static fixed-size allocation to avoid stack overflow - matrix is 240x10 = 9600 bytes
+    static Matrix<float, N_ALIGN_MAG_ACC, 10> D_T_static;
+    // Use only the portion we need
+    auto D_T = D_T_static.topRows(n_samples);
 
     // Create design matrix
     D_T.setZero();
