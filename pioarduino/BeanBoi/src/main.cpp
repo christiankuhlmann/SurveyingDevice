@@ -11,35 +11,35 @@ void setup()
 
     delay(500);
     xTaskCreatePinnedToCore(
-        computehandler, /* Function to implement the task */
-        "computehandler", /* Name of the task */
-        100000,  /* Stack size in words */
-        NULL,  /* Task input parameter */
-        1 ,  /* Priority of the task */
-        &computefunc_task,  /* Task handle. */
-        0); /* Core where the task should run */
+        computehandler,
+        "computehandler",
+        TaskStackSizes::COMPUTE,
+        NULL,
+        TaskPriorities::COMPUTE,
+        &computefunc_task,
+        0); // Core 0: Sensor processing
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Computehandler started sucessfully");
 
     delay(500);
     xTaskCreatePinnedToCore(
-        inputhandler, /* Function to implement the task */
-        "inputhandler", /* Name of the task */
-        2500,  /* Stack size in words */
-        NULL,  /* Task input parameter */
-        2 ,  /* Priority of the task */
-        &inputhandler_task,  /* Task handle. */
-        0); /* Core where the task should run */
+        inputhandler,
+        "inputhandler",
+        TaskStackSizes::INPUT,
+        NULL,
+        TaskPriorities::INPUT,
+        &inputhandler_task,
+        0); // Core 0: Button handling
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Inputhandler started sucessfully");
 
     delay(500);
     xTaskCreatePinnedToCore(
-        displayhandler, /* Function to implement the task */
-        "displayhandler", /* Name of the task */
-        2500,  /* Stack size in words */
-        NULL,  /* Task input parameter */
-        3 ,  /* Priority of the task */
-        &displayhandler_task,  /* Task handle. */
-        0); /* Core where the task should run */
+        displayhandler,
+        "displayhandler",
+        TaskStackSizes::DISPLAY,
+        NULL,
+        TaskPriorities::DISPLAY,
+        &displayhandler_task,
+        0); // Core 0: OLED refresh
     Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "displayhandler started sucessfully");
 
     startBLETask();

@@ -208,6 +208,12 @@ void startBLETask() {
     bleSendQueue = xQueueCreate(4, sizeof(MeasurementData));
     bleDataMutex = xSemaphoreCreateMutex();
     xTaskCreatePinnedToCore(
-        bleTask, "bleTask", 4096, nullptr, 1, nullptr, 1  // core 1
+        bleTask,
+        "bleTask",
+        4096,       // Stack: 4096 words (16KB) for BLE operations
+        nullptr,
+        1,          // Priority: 1 (same as COMPUTE, background task)
+        nullptr,
+        1           // Core 1: Dedicated to BLE to avoid interference with sensors
     );
 }

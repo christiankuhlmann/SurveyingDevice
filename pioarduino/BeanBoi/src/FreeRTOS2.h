@@ -42,6 +42,42 @@
 #define ACTION_MODE_SHORT   0x10 + ACTION_MODE_LONG
 
 /****************************************************************
+ * FreeRTOS Task Priorities
+ * 
+ * Priority scheme (higher number = higher priority):
+ * - DISPLAY (3): Highest priority for 5Hz UI refresh, ensures 
+ *                responsive user feedback
+ * - INPUT (2):   Medium priority for button handling, ensures
+ *                timely response to user interactions
+ * - COMPUTE (1): Lowest priority for sensor processing and 
+ *                calibration calculations, runs when higher 
+ *                priority tasks are idle
+ * 
+ * BLE task runs on Core 1 with priority 1 (see ble_manager.cpp)
+ ****************************************************************/
+namespace TaskPriorities {
+    constexpr UBaseType_t COMPUTE = 1;   // Background processing
+    constexpr UBaseType_t INPUT = 2;     // Button interrupt handling
+    constexpr UBaseType_t DISPLAY = 3;   // User-facing 5Hz refresh
+}
+
+/****************************************************************
+ * FreeRTOS Task Stack Sizes (in words, 1 word = 4 bytes)
+ * 
+ * Stack allocations:
+ * - COMPUTE: 100,000 words (400KB) - Large due to Eigen matrix
+ *            operations during calibration (fitEllipsoid uses
+ *            ~30KB static buffers)
+ * - INPUT:   2,500 words (10KB) - Moderate for state machine
+ * - DISPLAY: 2,500 words (10KB) - Moderate for OLED operations
+ ****************************************************************/
+namespace TaskStackSizes {
+    constexpr uint32_t COMPUTE = 100000;  // 400KB for Eigen operations
+    constexpr uint32_t INPUT = 2500;      // 10KB for state machine
+    constexpr uint32_t DISPLAY = 2500;    // 10KB for OLED rendering
+}
+
+/****************************************************************
  * Config for timing - external declarations
  ****************************************************************/
 extern const int BTN_LONG_PRESS_MS;
