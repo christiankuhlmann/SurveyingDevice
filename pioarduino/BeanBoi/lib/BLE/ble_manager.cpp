@@ -1,7 +1,7 @@
 #include "ble_manager.h"
 
 // BLE operation timeout constants
-constexpr TickType_t BLE_MUTEX_TIMEOUT_MS = 100;     // Mutex acquisition timeout
+constexpr TickType_t BLE_MUTEX_TIMEOUT_MS = portMAX_DELAY;     // Mutex acquisition timeout
 constexpr TickType_t BLE_QUEUE_TIMEOUT_MS = 0;       // Non-blocking queue send
 
 // Globals
