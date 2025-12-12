@@ -21,19 +21,23 @@ Point OLED::rotatePoint(const Point p, const uint16_t cx, const uint16_t cy , co
 }
 
 
-void DisplayHandler::init()
-{
+bool DisplayHandler::init() {
+	//0.Create a new image cache
+    if (BlackImage) {
+        free(BlackImage);  // Clean up existing allocation
+    }
+    
+    BlackImage = (UBYTE *)malloc(Imagesize);
+    if (!BlackImage) {
+        Serial.print("CRITICAL: Failed to allocate display buffer\r\n");
+        return false;
+    }
+
     System_Init();                                                                                                                                                                                                                                                                                   
     Serial.print(F("OLED_Init()...\r\n"));
     OLED_2IN42_Init();
     Driver_Delay_ms(500); 
     OLED_2IN42_Clear(); 
-
-    //0.Create a new image cache
-    if((BlackImage = (UBYTE *)malloc(Imagesize)) == NULL) { 
-        Serial.print("Failed to apply for black memory...\r\n");
-        //return -1;
-    }
 
     Paint_NewImage(BlackImage, OLED_2IN42_WIDTH, OLED_2IN42_HEIGHT, 0, BLACK);  
 
@@ -60,27 +64,27 @@ void DisplayHandler::drawHeading(float heading)
 {
     // Paint Image: "Hello world"
     char disp_str[10];
-    sprintf(disp_str,"H:%5.1f", heading);
+    snprintf(disp_str, sizeof(disp_str), "H:%5.1f", heading);
     Paint_DrawString_EN(X_MARGIN, HEADING_LOCATION_Y, disp_str, &Font12, WHITE, WHITE);
 }
 
 void DisplayHandler::drawInclination(float inclination)
 {
     char disp_str[10];
-    sprintf(disp_str,"I:%5.1f", inclination);
+    snprintf(disp_str, sizeof(disp_str), "I:%5.1f", inclination);
     Paint_DrawString_EN(X_MARGIN, INCLINATION_LOCATION_Y, disp_str, &Font12, WHITE, WHITE);
 }
 
 void DisplayHandler::drawRoll(float roll)
 {
 	char disp_str[10];
-	sprintf(disp_str,"R:%5.1f", roll);
+	snprintf(disp_str, sizeof(disp_str), "R:%5.1f", roll);
 	Paint_DrawString_EN(X_MARGIN, DISTANCE_LOCATION_Y, disp_str, &Font12, WHITE, WHITE);
 }
 
 void DisplayHandler::drawDistance(float distance) {
     char disp_str[10];
-    sprintf(disp_str,"D:%5.1f", distance);
+    snprintf(disp_str, sizeof(disp_str), "D:%5.1f", distance);
     Paint_DrawString_EN(X_MARGIN, DISTANCE_LOCATION_Y, disp_str, &Font12, WHITE, WHITE);
 }
 
@@ -236,7 +240,7 @@ void DisplayHandler::displayLaserCalib(const float angle_deg, const char progres
 	drawCentered(String("CALIB"),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+10,&Font12);
 	drawCentered(String(progress),SCREEN_WIDTH/2,TOP_BAR_HEIGHT+10+Font12.Height+2,&Font12);
     char str_contents [4];
-    sprintf(str_contents,"%03.0f", angle_deg);
+    snprintf(str_contents, sizeof(str_contents), "%03.0f", angle_deg);
 	drawCentered(String(str_contents),center.x,center.y-3,&Font12);
 }
 
