@@ -47,11 +47,11 @@ struct ShotData{
     int ID;
 };
 
-void getFileName(const unsigned int fileID, char (&fname)[FNAME_LENGTH]);
-void getVarName(const unsigned int counter, char (&varname)[VARNAME_LENGTH]);
+bool getFileName(const unsigned int fileID, char (&fname)[FNAME_LENGTH]);
+bool getVarName(const unsigned int counter, char (&varname)[VARNAME_LENGTH]);
 bool getCounter(const unsigned int fileID, unsigned int &counter);
-void setCounter(const unsigned int fileID, const unsigned int &counter);
-void saveShotData(const ShotData &sd, const unsigned int fileID);
+bool setCounter(const unsigned int fileID, const unsigned int &counter);
+bool saveShotData(const ShotData &sd, const unsigned int fileID);
 bool readShotData(ShotData &sd, unsigned int fileID, unsigned int shotID);
 bool readShotData(ShotData &sd, unsigned int fileID);
 

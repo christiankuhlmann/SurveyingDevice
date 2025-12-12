@@ -11,19 +11,31 @@ static float las_arr[3][N_LASER_CAL];
 
 static unsigned int counter;
 
-void getFileName(const unsigned int fileID, char (&fname)[FNAME_LENGTH])
+bool getFileName(const unsigned int fileID, char (&fname)[FNAME_LENGTH])
 {
-    sprintf(fname,"SD%03u\0", fileID);
+    if (fileID > 999) {
+        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "ERROR: fileID exceeds 999");
+        return false;
+    }
+    snprintf(fname, FNAME_LENGTH, "SD%03u", fileID);
+    return true;
 }
-void getVarName(const unsigned int counter, char (&varname)[VARNAME_LENGTH])
+bool getVarName(const unsigned int counter, char (&varname)[VARNAME_LENGTH])
 {
-    sprintf(varname,"%03u\0", counter+1);
+    if (counter >= 999) {
+        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "ERROR: counter exceeds 998");
+        return false;
+    }
+    snprintf(varname, VARNAME_LENGTH, "%03u", counter+1);
+    return true;
 }
 
 bool getCounter(const unsigned int fileID, unsigned int &counter)
 {
     char fname[FNAME_LENGTH];
-    getFileName(fileID, fname);
+    if (!getFileName(fileID, fname)) {
+        return false;
+    }
     // If file and varname exist ...
     if (FileFuncs::readFromFile(fname,"counter",counter)){
         return true;
@@ -31,19 +43,25 @@ bool getCounter(const unsigned int fileID, unsigned int &counter)
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Counter not found...");
     return false;
 }
-void setCounter(const unsigned int fileID, const unsigned int &counter)
+bool setCounter(const unsigned int fileID, const unsigned int &counter)
 {
     char fname[FNAME_LENGTH];
-    getFileName(fileID, fname);
+    if (!getFileName(fileID, fname)) {
+        return false;
+    }
     FileFuncs::writeToFile(fname,"counter",counter);
+    return true;
 }
 
-void saveShotData(const ShotData &sd, const unsigned int fileID)
+bool saveShotData(const ShotData &sd, const unsigned int fileID)
 {
     char fname[FNAME_LENGTH];
     char varname[VARNAME_LENGTH];
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Saving shot data to file...");
-    getFileName(fileID,fname);
+    
+    if (!getFileName(fileID, fname)) {
+        return false;
+    }
     Serial.printf("Namespace to write to: %s\n", fname);
 
 
@@ -52,31 +70,45 @@ void saveShotData(const ShotData &sd, const unsigned int fileID)
     {
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"File doesn't exist, creating new one...");
         counter = 0;
-        setCounter(fileID, counter);
+        if (!setCounter(fileID, counter)) {
+            return false;
+        }
     } // Get latest shot ID
 
     // Save shot to file with ID = counter
     Serial.printf("Counter to write to: %u\n", counter);
-    getVarName(counter+1,varname);
-    setCounter(fileID,counter+1);
+    if (!getVarName(counter+1, varname)) {
+        return false;
+    }
+    if (!setCounter(fileID, counter+1)) {
+        return false;
+    }
     Serial.printf("Key to write to: %s\n", varname);
 
     FileFuncs::writeToFile(fname,varname,&sd,sizeof(ShotData)); // Save the shot
+    return true;
 }
 bool readShotData(ShotData &sd, unsigned int fileID, unsigned int shotID)
 {
     char fname[FNAME_LENGTH];
     char varname[VARNAME_LENGTH];
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Reading shot data from file...");
-    getFileName(fileID,fname);
-    getVarName(shotID,varname);
+    
+    if (!getFileName(fileID, fname)) {
+        return false;
+    }
+    if (!getVarName(shotID, varname)) {
+        return false;
+    }
     return FileFuncs::readFromFile(fname,varname,&sd,sizeof(ShotData));
 }
 
 bool readShotData(ShotData &sd, unsigned int fileID)
 {
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Reading latest shot data from file...");
-    getCounter(fileID, counter); // Get latest shot ID
+    if (!getCounter(fileID, counter)) {
+        return false;
+    }
     return readShotData(sd,fileID,counter);
 }
 
