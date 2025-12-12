@@ -1,5 +1,9 @@
 #include "ble_manager.h"
 
+// BLE operation timeout constants
+constexpr TickType_t BLE_MUTEX_TIMEOUT_MS = 100;     // Mutex acquisition timeout
+constexpr TickType_t BLE_QUEUE_TIMEOUT_MS = 0;       // Non-blocking queue send
+
 // Globals
 static BLEData sharedBLEData;
 static QueueHandle_t bleSendQueue;
@@ -61,14 +65,18 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
 class CmdRdyCallback : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* pCharacteristic) {
-        
+        // Get value outside critical section to minimize lock time
         std::string value = pCharacteristic->getValue();
-        xSemaphoreTake(bleDataMutex, portMAX_DELAY);
-
-        sharedBLEData.setData(value.c_str());
-        sharedBLEData.setUpdated(true);
         
-        xSemaphoreGive(bleDataMutex);
+        // Use timeout instead of portMAX_DELAY to prevent deadlock
+        if (xSemaphoreTake(bleDataMutex, pdMS_TO_TICKS(BLE_MUTEX_TIMEOUT_MS)) == pdTRUE) {
+            sharedBLEData.setData(value.c_str());
+            sharedBLEData.setUpdated(true);
+            xSemaphoreGive(bleDataMutex);
+        } else {
+            // Mutex timeout - log but don't block
+            Serial.println("BLE: Mutex timeout in onWrite callback");
+        }
     }
 };
 
@@ -198,8 +206,14 @@ void bleTask(void* parameter) {
 
 // API: Call from Core 0 to queue data for BLE
 void sendBLEData(const MeasurementData& data) {
-    if (bleSendQueue) {
-        xQueueSend(bleSendQueue, &data, 0);
+    if (!bleSendQueue) {
+        Serial.println("BLE: Queue not initialized");
+        return;
+    }
+    
+    // Non-blocking send - if queue is full, data is dropped
+    if (xQueueSend(bleSendQueue, &data, BLE_QUEUE_TIMEOUT_MS) != pdTRUE) {
+        Serial.println("BLE: Queue full - measurement data dropped");
     }
 }
 
