@@ -6,7 +6,7 @@ namespace Debug_csd
 
 void debug(unsigned int mode, const char* str)
 {
-    if ((int)mode == 0 || (DEBUG_BOOL_ARR[(int)mode] && sizeof(str) < 250*sizeof(char)))
+    if ((int)mode == 0 || (DEBUG_BOOL_ARR[(int)mode] && strlen(str) < 250))
     {
         char buffer[250+6];
         snprintf(buffer, sizeof(buffer), "%s: %s\n",DEBUG_STR_ARR[(int)mode],str);
@@ -16,7 +16,7 @@ void debug(unsigned int mode, const char* str)
 
 void debugf(unsigned int mode, const char *format, ...)
 {
-    if ((int)mode == 0 || (DEBUG_BOOL_ARR[(int)mode] && sizeof(format) < 250*sizeof(char)))
+    if ((int)mode == 0 || (DEBUG_BOOL_ARR[(int)mode] && strlen(format) < 250))
     {
         va_list args;
         va_start(args, format);

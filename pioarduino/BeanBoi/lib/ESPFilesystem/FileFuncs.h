@@ -4,11 +4,13 @@
 #include <preferences.h>
 #include <nvs_flash.h>
 
+#define FNAME_LENGTH 6
+#define VARNAME_LENGTH 4
 
 namespace FileFuncs
 {
 
-static Preferences preferences;
+Preferences& getPreferences();
 
 bool locationExists(const char* fname, const char* vname);
 

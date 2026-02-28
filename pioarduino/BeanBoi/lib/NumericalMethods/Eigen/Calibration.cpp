@@ -1,29 +1,8 @@
-#include "FittingFuncs.h"
+#include "Calibration.h"
+#include "ArduinoEigenExtension.h"
 
 
 namespace NumericalMethods {
-
-Vector3f normalVec(const Ref<const MatrixXf> &point_cloud)
-{
-    Vector3f normal;
-    MatrixXf left_singular_mat;
-
-    // Subtract mean from each point otherwise its wrong XD
-    // https://www.ltu.se/cms_fs/1.51590!/svd-fitting.pdf
-    MatrixXf mean_adj_point_cloud = point_cloud;
-    mean_adj_point_cloud = mean_adj_point_cloud.colwise()-mean_adj_point_cloud.rowwise().mean();
-
-    JacobiSVD<MatrixXf> svd(mean_adj_point_cloud, ComputeThinU | ComputeThinV);
-    left_singular_mat = svd.matrixU();
-    // U_cols = left_singular_mat.cols();
-    // 3rd col of U contains normal vec
-    normal << left_singular_mat(0,2), left_singular_mat(1,2), left_singular_mat(2,2);
-
-    if (normal.dot(point_cloud.col(0)) < 0.0){ normal = -normal; }
-
-    return normal;
-};
-
 
 RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
 {
@@ -53,10 +32,8 @@ RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
 
     // This could end up being very large! Be careful!
     // Check limits on available memory!
-    // Use static fixed-size allocation to avoid stack overflow - matrix is 240x10 = 9600 bytes
-    static Matrix<float, N_ALIGN_MAG_ACC, 10> D_T_static;
-    // Use only the portion we need
-    auto D_T = D_T_static.topRows(n_samples);
+    // Remaining stack size MUST be greater than  n_samples x 10 x 4bytes!
+    MatrixXf D_T(n_samples,10);
 
     // Create design matrix
     D_T.setZero();
@@ -108,15 +85,11 @@ RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
             u1 = evec.col(i);
         }
     }
-    if (max_eval < 0.0)
-    {
-        Serial.println("No positive eigenvalues found!");
-    }
 
     // To preserve stabikity of calculations. Use pseudoinverse it determinant too small
     if (S22.determinant() < 0.05)
     {
-        u2 = -(pseudoInverse(S22) * S21) * u1;
+        u2 = -(Eigen::pseudoInverse(S22) * S21) * u1;
     } else {
         u2 = (-(S22.inverse() * S21) * u1);
     }
@@ -129,7 +102,7 @@ RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
 void fitEllipsoid(const Ref<const MatrixXf> &samples, Matrix3f &M_out, Vector3f &n_out, float &d_out)
 {
     static Vector<float,10> U;
-    U << fitEllipsoid(samples);
+    U = fitEllipsoid(samples).transpose();
 
     // Form output vector
     M_out << U[0], U[5], U[4], U[5], U[1], U[3], U[4], U[3], U[2];
@@ -215,6 +188,28 @@ void calculateEllipsoidTransformation(const Matrix3f &M, const Vector3f &n, cons
 
     R_out << V[0], V[1], V[2], V[3], V[4], V[5], V[6], V[7], V[8];
     b_out << V[9], V[10], V[11];
+}
+
+void calibrateEllipsoid(const Ref<const MatrixXf> &samples, Matrix3f &R_out, Vector3f &b_out)
+{
+    Matrix3f M;
+    Vector3f n;
+    float d;
+
+    fitEllipsoid(samples, M, n, d);
+    calculateEllipsoidTransformation(M, n, d, R_out, b_out);
+
+}
+
+float ellipsoidFitResidual(const Ref<const Matrix3Xf> &calibrated)
+{
+    int n_cols = calibrated.cols();
+    float sum_sq = 0.0f;
+    for (int i = 0; i < n_cols; ++i) {
+        float err = calibrated.col(i).norm() - 1.0f;
+        sum_sq += err * err;
+    }
+    return sqrtf(sum_sq / static_cast<float>(n_cols));
 }
 
 }

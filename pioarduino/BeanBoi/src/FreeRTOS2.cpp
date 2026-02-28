@@ -241,7 +241,7 @@ void executeAction(const uint32_t action)
             {
                 runCalibration();
                 next_mode = MODE_CALIB_SAVE_YN;
-                display_mode = DISP_CALIB_SAVE;
+                display_mode = DISP_CALIB_QUALITY;
             } else if (calib_progress >= N_ORIENTATIONS) {
                 next_mode = MODE_CALIB;
                 display_mode = DISP_LASER_CALIB;
@@ -265,6 +265,34 @@ void executeAction(const uint32_t action)
                 next_mode = MODE_IDLE;
                 display_mode = DISP_IDLE;
             }
+        } else if (action == ACTION_DOWN_SHORT){
+            // Undo last calibration sample
+            if (calib_progress > 0)
+            {
+                // Cross-phase check: if in laser phase with 0 laser samples,
+                // step back into static phase
+                bool in_laser_phase = (calib_progress >= N_ORIENTATIONS);
+                bool laser_at_zero = (sh.getCalibProgress(false) == 0);
+
+                if (in_laser_phase && laser_at_zero) {
+                    // Roll back into static phase
+                    removePreviosCalib();  // calls removePrevCalib(true) since progress will be <= N_ORIENTATIONS
+                    laserOff();
+                    display_mode = DISP_STATIC_CALIB;
+                } else {
+                    removePreviosCalib();
+                    // Stay in current phase
+                    if (sh.getCalibProgress() >= N_ORIENTATIONS) {
+                        display_mode = DISP_LASER_CALIB;
+                    } else {
+                        display_mode = DISP_STATIC_CALIB;
+                        laserOff();
+                    }
+                }
+                calib_progress = sh.getCalibProgress();
+                laserBeep();
+                Debug_csd::debugf(Debug_csd::DEBUG_ALWAYS, "Undo calib sample, progress: %d", calib_progress);
+            }
         }
         break;
 
@@ -274,7 +302,18 @@ void executeAction(const uint32_t action)
         case MODE_CALIB_REM_YN:
         if (action == ACTION_ON_SHORT)
         {
-            if(y_n_selector) removePreviosCalib();
+            if(y_n_selector) {
+                removePreviosCalib();
+                calib_progress = sh.getCalibProgress();
+            }
+            // Return to calibration mode regardless of choice
+            if (calib_progress >= N_ORIENTATIONS) {
+                next_mode = MODE_CALIB;
+                display_mode = DISP_LASER_CALIB;
+            } else {
+                next_mode = MODE_CALIB;
+                display_mode = DISP_STATIC_CALIB;
+            }
         } else if (action == ACTION_UP_SHORT){
             y_n_selector = true;
         } else if (action == ACTION_DOWN_SHORT){
@@ -288,14 +327,21 @@ void executeAction(const uint32_t action)
         case MODE_CALIB_SAVE_YN:
         if (action == ACTION_ON_SHORT)
         {
-            if(y_n_selector) saveCalib();
-            next_mode = MODE_IDLE;
-            display_mode = DISP_IDLE;
-            loadCalibration();
+            if (display_mode == DISP_CALIB_QUALITY) {
+                // User has seen quality — advance to save prompt
+                display_mode = DISP_CALIB_SAVE;
+                y_n_selector = true;
+            } else {
+                // Save or discard, then load calibration from NVS
+                if(y_n_selector) saveCalib();
+                loadCalibration();
+                next_mode = MODE_IDLE;
+                display_mode = DISP_IDLE;
+            }
         } else if (action == ACTION_UP_SHORT){
-            y_n_selector = true;
+            if (display_mode == DISP_CALIB_SAVE) y_n_selector = true;
         } else if (action == ACTION_DOWN_SHORT){
-            y_n_selector = false;
+            if (display_mode == DISP_CALIB_SAVE) y_n_selector = false;
         }
         break;
 
@@ -321,6 +367,24 @@ void executeAction(const uint32_t action)
         break;
 
         case MODE_BLUETOOTH:
+        break;
+
+        /************************************************************************************************
+         *                                      SHOT HISTORY MODE
+         ************************************************************************************************/
+        case MODE_HISTORY:
+        if (action == ACTION_UP_SHORT) {
+            history_scroll_index--;
+            if (history_scroll_index < 0) history_scroll_index = 0;
+        } else if (action == ACTION_DOWN_SHORT) {
+            int shot_count = sh.getShotCount(current_file_id);
+            history_scroll_index++;
+            if (history_scroll_index >= shot_count) history_scroll_index = shot_count - 1;
+            if (history_scroll_index < 0) history_scroll_index = 0;
+        } else if (action == ACTION_MODE_SHORT) {
+            next_mode = MODE_IDLE;
+            display_mode = DISP_IDLE;
+        }
         break;
 
         case MODE_FILES:
@@ -364,6 +428,10 @@ void updateDisplay()
 
     case DISP_CALIB_SAVE:
         displayCalibSaveYN();
+        break;
+
+    case DISP_CALIB_QUALITY:
+        displayCalibrationQuality();
         break;
 
     case DISP_CALIB_REM:
@@ -445,6 +513,7 @@ void inputhandler(void* parameter)
 
         Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Received interrupt...");
         clearInputHandlerEvents();
+        inputhandlerNotifiedValue = 0;  // Prevent stale value on timeout
         xTaskNotifyWait(        0x00,      /* Don't clear any notification bits on entry. */
                                 ULONG_MAX, /* Reset the notification value to 0 on exit. */
                                 &inputhandlerNotifiedValue, /* Notified value pass out. */

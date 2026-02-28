@@ -2,6 +2,14 @@
 
 namespace FileFuncs
 {
+
+static Preferences preferences;
+
+Preferences& getPreferences()
+{
+    return preferences;
+}
+
 bool locationExists(const char* fname, const char* vname)
 {
   if (preferences.begin(fname, true))
@@ -12,6 +20,8 @@ bool locationExists(const char* fname, const char* vname)
         return true;
     }
     Serial.print("ERROR: Key does not exist in file\n");
+    preferences.end();
+    return false;
   }
   Serial.print("ERROR: file does not exist\n");
   preferences.end();
@@ -118,7 +128,9 @@ bool readFromFile(const char* fname, const char* vname, void* data, size_t size)
 bool isKey(const char* fname, const char* key)
 {
     preferences.begin(fname, true);
-    return preferences.isKey(key);
+    bool result = preferences.isKey(key);
+    preferences.end();
+    return result;
 }
 
 void erase_flash()

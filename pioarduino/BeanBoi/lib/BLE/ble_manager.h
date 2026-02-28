@@ -3,35 +3,7 @@
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
-
-/** @brief MeasurementData class to hold measurement data.
- * 
- * This class encapsulates the measurement data including heading, inclination,
- * roll, distance, and timestamp. It provides setter and getter methods for each
- * of these attributes.
- */
-struct MeasurementData {
-private:
-    float heading;
-    float inclination;
-    float roll;
-    float distance;
-    uint32_t timestamp;
-
-public:
-    void setHeading(float h) { heading = h; }
-    void setInclination(float i) { inclination = i; }
-    void setRoll(float r) { roll = r; }
-    void setDistance(float d) { distance = d; }
-    void setTimestamp(uint32_t ts) { timestamp = ts; }
-
-    float getHeading() const { return heading; }
-    float getInclination() const { return inclination; }
-    float getRoll() const { return roll; }
-    float getDistance() const { return distance; }
-    uint32_t getTimestamp() const { return timestamp; }
-};
-
+#include <SensorHandler.h>   // MeasurementRecord
 
 struct BLEData {
 private:
@@ -56,18 +28,16 @@ public:
  * 
  * This function sets up the BLE device, initializes the BLE service,
  * and starts advertising.
- * 
- * @return true if initialization was successful, false otherwise.
  */
 void startBLETask();
 
 /**
  * @brief Sends measurement data over BLE.
  * 
- * This function sends the provided measurement data to the BLE queue.
+ * This function sends the provided measurement record to the BLE queue.
  * 
- * @param data The measurement data to send.
+ * @param rec The measurement record to send.
  */
-void sendBLEData(const MeasurementData& data);
+void sendBLEData(const MeasurementRecord& rec);
 
 #endif // BLE_MANAGER_H

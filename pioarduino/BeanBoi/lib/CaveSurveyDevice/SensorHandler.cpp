@@ -1,17 +1,64 @@
 #include "SensorHandler.h"
-#include <queue>
-#include <ArduinoJson.h>
 #include <stdint.h>
 
+// ---------------------------------------------------------------------------
+// MeasurementRecord helpers
+// ---------------------------------------------------------------------------
 
-typedef Matrix<float, Dynamic, Dynamic, RowMajor> RowMatrixXf;
-static StaticJsonDocument<60480> root;
-static float eig_arr[3][N_ALIGN_MAG_ACC];
-static float las_arr[3][N_LASER_CAL];
+int MeasurementRecord::toBLEPayload(uint8_t* buf, size_t bufLen) const
+{
+    const size_t needed = 4 * sizeof(float) + sizeof(uint32_t); // 20 bytes
+    if (bufLen < needed) return 0;
+    size_t off = 0;
+    memcpy(buf + off, &heading,     sizeof(float));   off += sizeof(float);
+    memcpy(buf + off, &inclination, sizeof(float));   off += sizeof(float);
+    memcpy(buf + off, &roll,        sizeof(float));   off += sizeof(float);
+    memcpy(buf + off, &distance,    sizeof(float));   off += sizeof(float);
+    memcpy(buf + off, &timestamp,   sizeof(uint32_t));off += sizeof(uint32_t);
+    return (int)off;
+}
 
+// ---------------------------------------------------------------------------
+// Shot data serialization – explicit float packing (layout-safe)
+// ---------------------------------------------------------------------------
+
+/// Packed layout: h, i, r, d, mag[3], acc[3], dir[3], ID(as float), ts(as float) = 15 floats
+static const size_t PACKED_RECORD_FLOATS = 15;
+static const size_t PACKED_RECORD_BYTES  = PACKED_RECORD_FLOATS * sizeof(float);
+
+static void packRecord(const MeasurementRecord &rec, float* buf)
+{
+    buf[0]  = rec.heading;
+    buf[1]  = rec.inclination;
+    buf[2]  = rec.roll;
+    buf[3]  = rec.distance;
+    buf[4]  = rec.mag(0);   buf[5]  = rec.mag(1);   buf[6]  = rec.mag(2);
+    buf[7]  = rec.acc(0);   buf[8]  = rec.acc(1);   buf[9]  = rec.acc(2);
+    buf[10] = rec.direction(0); buf[11] = rec.direction(1); buf[12] = rec.direction(2);
+    // Store int/uint32 as float for uniform packing
+    buf[13] = static_cast<float>(rec.ID);
+    buf[14] = static_cast<float>(rec.timestamp);
+}
+
+static void unpackRecord(const float* buf, MeasurementRecord &rec)
+{
+    rec.heading     = buf[0];
+    rec.inclination = buf[1];
+    rec.roll        = buf[2];
+    rec.distance    = buf[3];
+    rec.mag  << buf[4],  buf[5],  buf[6];
+    rec.acc  << buf[7],  buf[8],  buf[9];
+    rec.direction << buf[10], buf[11], buf[12];
+    rec.ID        = static_cast<int>(buf[13]);
+    rec.timestamp = static_cast<uint32_t>(buf[14]);
+}
+
+// ---------------------------------------------------------------------------
+// File-name / counter helpers for shot storage
+// ---------------------------------------------------------------------------
 static unsigned int counter;
 
-bool getFileName(const unsigned int fileID, char (&fname)[FNAME_LENGTH])
+bool getFileName(unsigned int fileID, char (&fname)[FNAME_LENGTH])
 {
     if (fileID > 999) {
         Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "ERROR: fileID exceeds 999");
@@ -20,100 +67,83 @@ bool getFileName(const unsigned int fileID, char (&fname)[FNAME_LENGTH])
     snprintf(fname, FNAME_LENGTH, "SD%03u", fileID);
     return true;
 }
-bool getVarName(const unsigned int counter, char (&varname)[VARNAME_LENGTH])
+
+bool getVarName(unsigned int counter, char (&varname)[VARNAME_LENGTH])
 {
     if (counter >= 999) {
         Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "ERROR: counter exceeds 998");
         return false;
     }
-    snprintf(varname, VARNAME_LENGTH, "%03u", counter+1);
+    snprintf(varname, VARNAME_LENGTH, "%03u", counter + 1);
     return true;
 }
 
-bool getCounter(const unsigned int fileID, unsigned int &counter)
+bool getCounter(unsigned int fileID, unsigned int &counter)
 {
     char fname[FNAME_LENGTH];
-    if (!getFileName(fileID, fname)) {
-        return false;
-    }
-    // If file and varname exist ...
-    if (FileFuncs::readFromFile(fname,"counter",counter)){
-        return true;
-    }
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Counter not found...");
+    if (!getFileName(fileID, fname)) return false;
+    if (FileFuncs::readFromFile(fname, "counter", counter)) return true;
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Counter not found...");
     return false;
 }
-bool setCounter(const unsigned int fileID, const unsigned int &counter)
+
+bool setCounter(unsigned int fileID, const unsigned int &counter)
 {
     char fname[FNAME_LENGTH];
-    if (!getFileName(fileID, fname)) {
-        return false;
-    }
-    FileFuncs::writeToFile(fname,"counter",counter);
+    if (!getFileName(fileID, fname)) return false;
+    FileFuncs::writeToFile(fname, "counter", counter);
     return true;
 }
 
-bool saveShotData(const ShotData &sd, const unsigned int fileID)
+bool saveShotData(const MeasurementRecord &rec, unsigned int fileID)
 {
     char fname[FNAME_LENGTH];
     char varname[VARNAME_LENGTH];
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Saving shot data to file...");
-    
-    if (!getFileName(fileID, fname)) {
-        return false;
-    }
-    Serial.printf("Namespace to write to: %s\n", fname);
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Saving shot data to file...");
 
+    if (!getFileName(fileID, fname)) return false;
 
-    // If file exists doesn't exist, create it with counter = 0
-    if (!getCounter(fileID, counter))
-    {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"File doesn't exist, creating new one...");
-        counter = 0;
-        if (!setCounter(fileID, counter)) {
-            return false;
-        }
-    } // Get latest shot ID
-
-    // Save shot to file with ID = counter
-    Serial.printf("Counter to write to: %u\n", counter);
-    if (!getVarName(counter+1, varname)) {
-        return false;
-    }
-    if (!setCounter(fileID, counter+1)) {
-        return false;
-    }
-    Serial.printf("Key to write to: %s\n", varname);
-
-    FileFuncs::writeToFile(fname,varname,&sd,sizeof(ShotData)); // Save the shot
-    return true;
-}
-bool readShotData(ShotData &sd, unsigned int fileID, unsigned int shotID)
-{
-    char fname[FNAME_LENGTH];
-    char varname[VARNAME_LENGTH];
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Reading shot data from file...");
-    
-    if (!getFileName(fileID, fname)) {
-        return false;
-    }
-    if (!getVarName(shotID, varname)) {
-        return false;
-    }
-    return FileFuncs::readFromFile(fname,varname,&sd,sizeof(ShotData));
-}
-
-bool readShotData(ShotData &sd, unsigned int fileID)
-{
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Reading latest shot data from file...");
     if (!getCounter(fileID, counter)) {
-        return false;
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "File doesn't exist, creating new one...");
+        counter = 0;
+        if (!setCounter(fileID, counter)) return false;
     }
-    return readShotData(sd,fileID,counter);
+
+    if (!getVarName(counter + 1, varname)) return false;
+    if (!setCounter(fileID, counter + 1))  return false;
+
+    float packed[PACKED_RECORD_FLOATS];
+    packRecord(rec, packed);
+    FileFuncs::writeToFile(fname, varname, packed, (int)PACKED_RECORD_FLOATS);
+    return true;
+}
+
+bool readShotData(MeasurementRecord &rec, unsigned int fileID, unsigned int shotID)
+{
+    char fname[FNAME_LENGTH];
+    char varname[VARNAME_LENGTH];
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Reading shot data from file...");
+    if (!getFileName(fileID, fname))  return false;
+    if (!getVarName(shotID, varname)) return false;
+
+    float packed[PACKED_RECORD_FLOATS];
+    if (!FileFuncs::readFromFile(fname, varname, packed, (int)PACKED_RECORD_FLOATS)) return false;
+    unpackRecord(packed, rec);
+    return true;
+}
+
+bool readShotData(MeasurementRecord &rec, unsigned int fileID)
+{
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Reading latest shot data from file...");
+    if (!getCounter(fileID, counter)) return false;
+    return readShotData(rec, fileID, counter);
 }
 
 // IMPORTANT: References are immutable and must be definied upon initialisation!
-SensorHandler::SensorHandler(Accelerometer &a, Magnetometer &m, Laser &l):acc(a), mag(m), las(l){}
+SensorHandler::SensorHandler(Accelerometer &a, Magnetometer &m, Laser &l):acc(a), mag(m), las(l)
+{
+    mutex = xSemaphoreCreateMutex();
+}
 
 void SensorHandler::init()
 {
@@ -140,6 +170,21 @@ void SensorHandler::init()
     loadCalibration();
 }
 
+bool SensorHandler::tryLock()
+{
+    return xSemaphoreTake(mutex, 0) == pdTRUE;
+}
+
+void SensorHandler::lock()
+{
+    xSemaphoreTake(mutex, portMAX_DELAY);
+}
+
+void SensorHandler::unlock()
+{
+    xSemaphoreGive(mutex);
+}
+
 void SensorHandler::resetCalibration()
 {
     calib_parms.Ra_cal.setIdentity();
@@ -150,84 +195,74 @@ void SensorHandler::resetCalibration()
     calib_parms.ba_cal.setZero();
     calib_parms.bm_cal.setZero();
     calib_parms.inclination_angle = 0;
+    calib_parms.quality = {};
     static_calib_progress = 0;
     las_calib_progress = 0;
 }
 
 void SensorHandler::update()
 {
-    mag_data << 0,0,0;
-    acc_data << 0,0,0;
-    for (int i=0; i<N_UPDATE_SAMPLES; i++)
+    mag_data << 0, 0, 0;
+    acc_data << 0, 0, 0;
+    for (int i = 0; i < N_UPDATE_SAMPLES; i++)
     {
         Vector3f temp_mag = mag.getMeasurement();
         Vector3f temp_acc = acc.getMeasurement();
-        
-        // Debug: Check if sensors are returning valid data
+
         if (i == 0) {
-            Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"First sensor reading - Mag: %f %f %f, Acc: %f %f %f", 
-                temp_mag(0), temp_mag(1), temp_mag(2), temp_acc(0), temp_acc(1), temp_acc(2));
+            Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+                "First sensor reading - Mag: %f %f %f, Acc: %f %f %f",
+                temp_mag(0), temp_mag(1), temp_mag(2),
+                temp_acc(0), temp_acc(1), temp_acc(2));
         }
-        
+
         mag_data += temp_mag;
         acc_data += temp_acc;
-        // taskYIELD(); // Yield to other tasks
     }
     mag_data /= N_UPDATE_SAMPLES;
     acc_data /= N_UPDATE_SAMPLES;
 
-    // Store corrected data in corrected_acc_data and corrected_mag_data
-    correctData(corrected_shot_data.m, corrected_shot_data.g);
+    // Apply calibration correction
+    correctData(corrected_shot_data.mag, corrected_shot_data.acc);
 
+    // Compute angles & direction vector
+    Vector3f HIR = NumericalMethods::inertialToCardan(corrected_shot_data.mag, corrected_shot_data.acc);
+    corrected_shot_data.heading     = RAD_TO_DEG * HIR(0);
+    corrected_shot_data.inclination = RAD_TO_DEG * HIR(1);
+    corrected_shot_data.roll        = RAD_TO_DEG * HIR(2);
+    if (corrected_shot_data.heading < 0) corrected_shot_data.heading += 360.0f;
+    corrected_shot_data.direction   = NumericalMethods::inertialToVector(corrected_shot_data.mag, corrected_shot_data.acc);
 
-    Matrix3f ENU;
-    ENU = NumericalMethods::inertialToENU(corrected_shot_data.m,corrected_shot_data.g);
-    corrected_shot_data.HIR = NumericalMethods::inertialToCardan(corrected_shot_data.m,corrected_shot_data.g);
-    corrected_shot_data.v = NumericalMethods::inertialToVector(corrected_shot_data.m,corrected_shot_data.g);
-
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Raw acc data: X %f   Y %f   Z %f   Norm: %f", acc_data(0), acc_data(1), acc_data(2), acc_data.norm());
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Raw mag data: X %f   Y %f   Z %f   Norm: %f", mag_data(0), mag_data(1), mag_data(2), mag_data.norm());
-    
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Corrected acc data: X %f   Y %f   Z %f   Norm: %f", corrected_shot_data.g(0), corrected_shot_data.g(1), corrected_shot_data.g(2), corrected_shot_data.g.norm());
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Corrected mag data: X %f   Y %f   Z %f   Norm: %f", corrected_shot_data.m(0), corrected_shot_data.m(1), corrected_shot_data.m(2), corrected_shot_data.m.norm());
-    
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"ENU data: \nE: %f %f %f\nN: %f %f %f\nU: %f %f %f",
-    ENU.col(0)(0), ENU.col(0)(1), ENU.col(0)(2),
-    ENU.col(1)(0), ENU.col(1)(1), ENU.col(1)(2),
-    ENU.col(2)(0), ENU.col(2)(1), ENU.col(2)(2));
-
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"HIR data: H %f   I %f   R %f\n", corrected_shot_data.HIR(0), corrected_shot_data.HIR(1), corrected_shot_data.HIR(2));
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+        "Raw acc data: X %f   Y %f   Z %f   Norm: %f",
+        acc_data(0), acc_data(1), acc_data(2), acc_data.norm());
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+        "Raw mag data: X %f   Y %f   Z %f   Norm: %f",
+        mag_data(0), mag_data(1), mag_data(2), mag_data.norm());
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+        "Corrected acc: X %f   Y %f   Z %f   Norm: %f",
+        corrected_shot_data.acc(0), corrected_shot_data.acc(1), corrected_shot_data.acc(2),
+        corrected_shot_data.acc.norm());
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+        "Corrected mag: X %f   Y %f   Z %f   Norm: %f",
+        corrected_shot_data.mag(0), corrected_shot_data.mag(1), corrected_shot_data.mag(2),
+        corrected_shot_data.mag.norm());
+    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+        "HIR data: H %f   I %f   R %f\n",
+        corrected_shot_data.heading, corrected_shot_data.inclination, corrected_shot_data.roll);
 }
 
-Vector3f SensorHandler::getCardan(bool corrected)
+MeasurementRecord SensorHandler::getShotData(bool corrected)
 {
-    if (corrected) 
-    {
-        return NumericalMethods::inertialToCardan(corrected_acc_data, corrected_mag_data);
-    }   else    {
-        return NumericalMethods::inertialToCardan(acc_data, mag_data);
-    }
-}
-Vector3f SensorHandler::getCartesian(bool corrected)
-{
-    if (corrected) 
-    {
-        return NumericalMethods::inertialToVector(corrected_acc_data, corrected_mag_data);
-    }   else    {
-        return NumericalMethods::inertialToVector(acc_data, mag_data);
-    }
-}
-ShotData SensorHandler::getShotData(bool corrected)
-{
-    if (corrected) 
+    if (corrected)
     {
         return corrected_shot_data;
-    }   else    {
+    } else {
         return shot_data;
     }
 }
 
-int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisation)
+int SensorHandler::takeShot(bool laser_reading, bool use_stabilisation)
 {
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Starting to take shot...");
     if (use_stabilisation)
@@ -263,21 +298,33 @@ int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisati
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Data collected...");
 
     
-    if (laser_reading) { las_data = las.getMeasurement(); }
-    if (las_data <= 0) {return 1;}
+    if (laser_reading) {
+        las_data = las.getMeasurement();
+        if (las_data <= 0) { return 1; }
+    }
 
-    // Update stored shot data
-    shot_data.m = mag_data;
-    shot_data.g = acc_data;
-    shot_data.d = las_data;
-    shot_data.HIR = NumericalMethods::inertialToCardan(shot_data.m,shot_data.g);
-    shot_data.v = NumericalMethods::inertialToVector(shot_data.m,shot_data.g);
+    // Update raw shot data
+    shot_data.mag = mag_data;
+    shot_data.acc = acc_data;
+    shot_data.distance = las_data;
+    shot_data.timestamp = (uint32_t)millis();
+    Vector3f raw_HIR = NumericalMethods::inertialToCardan(shot_data.mag, shot_data.acc);
+    shot_data.heading     = RAD_TO_DEG * raw_HIR(0);
+    shot_data.inclination = RAD_TO_DEG * raw_HIR(1);
+    shot_data.roll        = RAD_TO_DEG * raw_HIR(2);
+    if (shot_data.heading < 0) shot_data.heading += 360.0f;
+    shot_data.direction   = NumericalMethods::inertialToVector(shot_data.mag, shot_data.acc);
 
-    // Save corrected shot data in corrected_shot_data
-    correctData(corrected_shot_data.m, corrected_shot_data.g);
-    corrected_shot_data.HIR = NumericalMethods::inertialToCardan(corrected_shot_data.m,corrected_shot_data.g);
-    corrected_shot_data.v = NumericalMethods::inertialToVector(corrected_shot_data.m,corrected_shot_data.g);
-    corrected_shot_data.d = shot_data.d + DEVICE_LENGTH;
+    // Save corrected shot data
+    correctData(corrected_shot_data.mag, corrected_shot_data.acc);
+    Vector3f cor_HIR = NumericalMethods::inertialToCardan(corrected_shot_data.mag, corrected_shot_data.acc);
+    corrected_shot_data.heading     = RAD_TO_DEG * cor_HIR(0);
+    corrected_shot_data.inclination = RAD_TO_DEG * cor_HIR(1);
+    corrected_shot_data.roll        = RAD_TO_DEG * cor_HIR(2);
+    if (corrected_shot_data.heading < 0) corrected_shot_data.heading += 360.0f;
+    corrected_shot_data.direction   = NumericalMethods::inertialToVector(corrected_shot_data.mag, corrected_shot_data.acc);
+    corrected_shot_data.distance    = las_data + DEVICE_LENGTH;
+    corrected_shot_data.timestamp   = (uint32_t)millis();
 
 
 
@@ -291,10 +338,6 @@ int SensorHandler::takeShot(const bool laser_reading, const bool use_stabilisati
 
 void SensorHandler::correctData(Vector3f &m, Vector3f &g)
 {
-    // Serial.printf("Rm_align: %f %f %f\n", calib_parms.Rm_align(0), calib_parms.Rm_align(1), calib_parms.Rm_align(2));
-    // Serial.printf("Rm_las: %f %f %f\n", calib_parms.Rm_las(0), calib_parms.Rm_las(1), calib_parms.Rm_las(2));
-    // Serial.printf("Rm_cal: %f %f %f\n", calib_parms.Rm_cal(0), calib_parms.Rm_cal(1), calib_parms.Rm_cal(2));
-
     // Apply sensor calibration
     m = calib_parms.Rm_cal * (mag_data - calib_parms.bm_cal);
     g = calib_parms.Ra_cal * (acc_data - calib_parms.ba_cal);
@@ -321,6 +364,18 @@ void SensorHandler::getFlashStats()
     FileFuncs::getStatus();
 }
 
+int SensorHandler::getShotCount(unsigned int fileID)
+{
+    unsigned int count = 0;
+    if (!getCounter(fileID, count)) return 0;
+    return (int)count;
+}
+
+bool SensorHandler::readShotByIndex(MeasurementRecord &rec, unsigned int fileID, unsigned int index)
+{
+    return readShotData(rec, fileID, index);
+}
+
 int SensorHandler::collectStaticCalibData()
 {
     if (static_calib_progress >= N_ORIENTATIONS) { return N_ORIENTATIONS; }
@@ -345,9 +400,6 @@ int SensorHandler::collectStaticCalibData()
         static_calib_data.mag_data.col(index) = m/n_avg;
     }
 
-    // takeShot(false);
-    // mag_align_data.col(mag_acc_align_progress) = getMagData();
-    // acc_align_data.col(mag_acc_align_progress) = getAccData();
     static_calib_progress++;
     Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Static calibration progress %i/%i", static_calib_progress, N_ORIENTATIONS);
     return static_calib_progress;
@@ -372,244 +424,204 @@ int SensorHandler::collectLaserCalibData()
 
 int SensorHandler::calibrate()
 {
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate start - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    Vector<float,10> Um = NumericalMethods::fitEllipsoid(static_calib_data.mag_data);
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After mag fitEllipsoid - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    NumericalMethods::calculateEllipsoidTransformation(Um, calib_parms.Rm_cal, calib_parms.bm_cal);
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After mag transformation - Free heap: %u, Largest block: %u", 
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate start - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
-    Vector<float,10> Ua = NumericalMethods::fitEllipsoid(static_calib_data.acc_data);
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After acc fitEllipsoid - Free heap: %u, Largest block: %u", 
+    NumericalMethods::calibrateEllipsoid(static_calib_data.mag_data, calib_parms.Rm_cal, calib_parms.bm_cal);
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After mag calibrateEllipsoid - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    NumericalMethods::calculateEllipsoidTransformation(Ua, calib_parms.Ra_cal, calib_parms.ba_cal);
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate complete - Free heap: %u, Largest block: %u", 
+
+    NumericalMethods::calibrateEllipsoid(static_calib_data.acc_data, calib_parms.Ra_cal, calib_parms.ba_cal);
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate complete - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
+
     return 0;
 }
 int SensorHandler::align()
 {
+    // ----- Step 1: Apply calibration to laser data -----
+    Matrix<float, 3, N_LASER_CAL> cal_laser_acc =
+        calib_parms.Ra_cal * (laser_calib_data.acc_data.colwise() - calib_parms.ba_cal);
+    Matrix<float, 3, N_LASER_CAL> cal_laser_mag =
+        calib_parms.Rm_cal * (laser_calib_data.mag_data.colwise() - calib_parms.bm_cal);
 
-    // ------------------------------ Run laser alignment ------------------------------
-    // Using collected data, apply calibration corrections
-    Matrix<float,3,N_LASER_CAL> temp_acc_data = calib_parms.Ra_cal * (laser_calib_data.acc_data.colwise() - calib_parms.ba_cal);
-    Matrix<float,3,N_LASER_CAL> temp_mag_data = calib_parms.Rm_cal * (laser_calib_data.mag_data.colwise() - calib_parms.bm_cal);
+    // Keep pre-normalisation copies for quality assessment
+    Matrix<float, 3, N_LASER_CAL> cal_laser_mag_unnorm = cal_laser_mag;
+    Matrix<float, 3, N_LASER_CAL> cal_laser_acc_unnorm = cal_laser_acc;
 
-    // Normalise data as calibration should lead to normalised data
-    temp_acc_data.colwise().normalize();
-    temp_mag_data.colwise().normalize();
+    cal_laser_acc.colwise().normalize();
+    cal_laser_mag.colwise().normalize();
 
-    // Run laser alignment
-    NumericalMethods::alignToNorm(temp_acc_data, calib_parms.Ra_las);
-    NumericalMethods::alignToNorm(temp_mag_data, calib_parms.Rm_las);
+    // ----- Step 2: Unified laser alignment -----
+    NumericalMethods::alignLaser(cal_laser_acc, cal_laser_mag,
+                                 calib_parms.Ra_las, calib_parms.Rm_las);
 
-    // ------------------------------ Run MAG.I.CAL alignment ------------------------------
-    static Matrix<float,3,N_ALIGN_MAG_ACC> acc_magical_data, mag_magical_data;
+    // ----- Step 3: Apply calibration to static data -----
+    Matrix<float, 3, N_ALIGN_MAG_ACC> cal_static_acc =
+        calib_parms.Ra_cal * (static_calib_data.acc_data.colwise() - calib_parms.ba_cal);
+    Matrix<float, 3, N_ALIGN_MAG_ACC> cal_static_mag =
+        calib_parms.Rm_cal * (static_calib_data.mag_data.colwise() - calib_parms.bm_cal);
 
-    // Apply calibration correction
-    acc_magical_data = calib_parms.Ra_cal * (static_calib_data.acc_data.colwise() - calib_parms.ba_cal);
-    mag_magical_data = calib_parms.Rm_cal * (static_calib_data.mag_data.colwise() - calib_parms.bm_cal);
+    // Pre-normalisation copies for quality assessment
+    Matrix<float, 3, N_ALIGN_MAG_ACC> cal_static_mag_unnorm = cal_static_mag;
+    Matrix<float, 3, N_ALIGN_MAG_ACC> cal_static_acc_unnorm = cal_static_acc;
 
-    // Normalise data
-    acc_magical_data.colwise().normalize();
-    mag_magical_data.colwise().normalize();
+    cal_static_acc.colwise().normalize();
+    cal_static_mag.colwise().normalize();
 
-    // Apply laser alignment
-    acc_magical_data = calib_parms.Ra_las * acc_magical_data;
-    mag_magical_data = calib_parms.Rm_las * mag_magical_data;
-    
-    // Calculate MAG.I.CAL alignment
-    NumericalMethods::alignMagAcc(
-        acc_magical_data, 
-        mag_magical_data, 
-        calib_parms.Rm_align, calib_parms.inclination_angle);
+    // ----- Step 4: Apply laser alignment to static data -----
+    Matrix<float, 3, N_ALIGN_MAG_ACC> aligned_static_acc = calib_parms.Ra_las * cal_static_acc;
+    Matrix<float, 3, N_ALIGN_MAG_ACC> aligned_static_mag = calib_parms.Rm_las * cal_static_mag;
 
-    Vector3f temp1, temp2;
-    // temp1 = NumericalMethods::normalVec(temp_acc_data);
-    // temp2 = NumericalMethods::normalVec(calib_parms.Ra_las * temp_acc_data);
-    // Serial.printf("Acc Matrix: \n %f %f %f \n %f %f %f \n %f %f %f \n\n", 
-    // calib_parms.Ra_las(0,0), calib_parms.Ra_las(0,1), calib_parms.Ra_las(0,2),
-    // calib_parms.Ra_las(1,0), calib_parms.Ra_las(1,1), calib_parms.Ra_las(1,2),
-    // calib_parms.Ra_las(2,0), calib_parms.Ra_las(2,1), calib_parms.Ra_las(2,2));
-    // Serial.printf("Original acc norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
-    // Serial.printf("Corrected acc norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
-    // Serial.println("");
+    // ----- Step 5: CWB mag-acc alignment -----
+    float inclination_variance = 0;
+    NumericalMethods::alignMagAcc_CWB(
+        aligned_static_acc, aligned_static_mag,
+        calib_parms.Rm_align, calib_parms.inclination_angle,
+        &inclination_variance);
 
-    // temp1 = NumericalMethods::normalVec(temp_mag_data);
-    // temp2 = NumericalMethods::normalVec(calib_parms.Rm_las * temp_mag_data);
-    // Serial.printf("Mag Matrix: \n %f %f %f \n %f %f %f \n %f %f %f \n\n", 
-    // calib_parms.Rm_las(0,0), calib_parms.Rm_las(0,1), calib_parms.Rm_las(0,2),
-    // calib_parms.Rm_las(1,0), calib_parms.Rm_las(1,1), calib_parms.Rm_las(1,2),
-    // calib_parms.Rm_las(2,0), calib_parms.Rm_las(2,1), calib_parms.Rm_las(2,2));
-    // Serial.printf("Original mag norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
-    // Serial.printf("Corrected mag norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
-    // Serial.println("");
+    // ----- Step 6: Quality assessment -----
+    calib_parms.quality = NumericalMethods::computeCalibrationQuality(
+        cal_static_mag_unnorm, cal_static_acc_unnorm,
+        cal_laser_mag_unnorm, cal_laser_acc_unnorm,
+        inclination_variance);
 
-    temp1 = NumericalMethods::normalVec(temp_acc_data);
-    temp2 = NumericalMethods::normalVec(temp_mag_data);
-    Serial.printf("Corrected acc norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
-    Serial.printf("Corrected mag norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
-
-    temp1 = NumericalMethods::normalVec(calib_parms.Ra_las * temp_acc_data);
-    temp2 = NumericalMethods::normalVec(calib_parms.Rm_align * calib_parms.Rm_las * temp_mag_data);
-
-    if (temp2(0)<0) calib_parms.Rm_align = -1 * calib_parms.Rm_align;
-    temp2 = NumericalMethods::normalVec(calib_parms.Rm_align * calib_parms.Rm_las * temp_mag_data);
-
-
-    Serial.printf("Aligned acc norm: %f %f %f \n", temp1(0), temp1(1), temp1(2));
-    Serial.printf("Aligned mag norm: %f %f %f \n", temp2(0), temp2(1), temp2(2));
-
+    // ----- Debug output -----
     Serial.printf("Inclination angle: %f\n", calib_parms.inclination_angle);
-    Serial.println("");
-
-    Vector3f a, b;
-    float temp;
-    for (int i=0; i<N_ALIGN_MAG_ACC; i++)
-    {
-        a = calib_parms.Rm_align * mag_magical_data.col(i);
-        b = acc_magical_data.col(i);
-        temp = acos(a.dot(b) / (a.norm() * b.norm()));
-        Serial.printf("Angle: %f\n", RAD_TO_DEG * temp);
-    }
-
-    // // ------------------------------ Second alignment ------------------------------
-    // Matrix3f Ra_las2, Rm_las2, Rm_align2;
-    // float inclination_angle2;
-
-    // temp_acc_data = calib_parms.Ra_las * temp_acc_data;
-    // temp_mag_data = calib_parms.Rm_align * calib_parms.Rm_las * temp_mag_data;
-    // NumericalMethods::alignToNorm(temp_acc_data, Ra_las2);
-    // NumericalMethods::alignToNorm(temp_mag_data, Rm_las2);
-
-    // acc_magical_data = Ra_las2 * acc_magical_data;
-    // mag_magical_data = Rm_las2 * calib_parms.Rm_align * mag_magical_data;
-    // NumericalMethods::alignMagAcc(
-    //     acc_magical_data, 
-    //     mag_magical_data, 
-    //     Rm_align2, inclination_angle2);
-
-    // temp1 = NumericalMethods::normalVec(Ra_las2 * temp_acc_data);
-    // temp2 = NumericalMethods::normalVec(Rm_align2 * Rm_las2 * temp_mag_data);
-    // Serial.printf("Aligned acc norm2: %f %f %f \n", temp1(0), temp1(1), temp1(2));
-    // Serial.printf("Aligned mag norm2: %f %f %f \n", temp2(0), temp2(1), temp2(2));
-    // Serial.printf("Inclination angle2: %f\n", inclination_angle2);
-
-
-    // for (int i=0; i<N_ALIGN_MAG_ACC; i++)
-    // {
-    //     a = Rm_align2 * mag_magical_data.col(i);
-    //     b = acc_magical_data.col(i);
-    //     temp = acos(a.dot(b) / (a.norm() * b.norm()));
-    //     Serial.printf("Angle: %f\n", RAD_TO_DEG * temp);
-    // }
+    Serial.printf("Quality grade: %s\n",
+                  NumericalMethods::gradeToString(calib_parms.quality.grade));
+    Serial.printf("  Inc sigma: %.3f deg\n", calib_parms.quality.inclination_sigma_deg);
+    Serial.printf("  Mag residual: %.6f\n",  calib_parms.quality.mag_fit_residual);
+    Serial.printf("  Acc residual: %.6f\n",  calib_parms.quality.acc_fit_residual);
+    Serial.printf("  Laser spread: %.3f deg\n", calib_parms.quality.laser_plane_spread_deg);
 
     return 0;
 }
 
+void SensorHandler::validateCalibrationQuality()
+{
+    // Re-run quality assessment from stored raw data + current calib params.
+    // Useful after loadRawCalibrationData() + calibrate() + align().
+    // Quality is already computed at end of align(), so this is a no-op
+    // unless called independently.
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Quality grade: ");
+    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,
+                     NumericalMethods::gradeToString(calib_parms.quality.grade));
+}
+
 void SensorHandler::saveCalibration()
 {
-    EigenFileFuncs::writeToFile("static_calib","acc_data", static_calib_data.acc_data);
-    EigenFileFuncs::writeToFile("static_calib","mag_data", static_calib_data.mag_data);
-    EigenFileFuncs::writeToFile("laser_calib","acc_data", laser_calib_data.acc_data);
-    EigenFileFuncs::writeToFile("laser_calib","mag_data", laser_calib_data.mag_data);
+    // Raw calibration data → "calib_raw"
+    EigenFileFuncs::writeToFile("calib_raw", "s_acc", static_calib_data.acc_data);
+    EigenFileFuncs::writeToFile("calib_raw", "s_mag", static_calib_data.mag_data);
+    EigenFileFuncs::writeToFile("calib_raw", "l_acc", laser_calib_data.acc_data);
+    EigenFileFuncs::writeToFile("calib_raw", "l_mag", laser_calib_data.mag_data);
 
-    EigenFileFuncs::writeToFile("calib_parms","Ra_cal", calib_parms.Ra_cal);
-    EigenFileFuncs::writeToFile("calib_parms","ba_cal", calib_parms.ba_cal);
-    EigenFileFuncs::writeToFile("calib_parms","Rm_cal", calib_parms.Rm_cal);
-    EigenFileFuncs::writeToFile("calib_parms","bm_cal", calib_parms.bm_cal);
+    // Computed parameters → "calib_res"
+    EigenFileFuncs::writeToFile("calib_res", "Ra_cal",   calib_parms.Ra_cal);
+    EigenFileFuncs::writeToFile("calib_res", "ba_cal",   calib_parms.ba_cal);
+    EigenFileFuncs::writeToFile("calib_res", "Rm_cal",   calib_parms.Rm_cal);
+    EigenFileFuncs::writeToFile("calib_res", "bm_cal",   calib_parms.bm_cal);
+    EigenFileFuncs::writeToFile("calib_res", "Ra_las",   calib_parms.Ra_las);
+    EigenFileFuncs::writeToFile("calib_res", "Rm_las",   calib_parms.Rm_las);
+    EigenFileFuncs::writeToFile("calib_res", "Rm_align", calib_parms.Rm_align);
+    FileFuncs::writeToFile("calib_res", "inc_angle", calib_parms.inclination_angle);
 
-    EigenFileFuncs::writeToFile("calib_parms","Ra_las", calib_parms.Ra_las);
-    EigenFileFuncs::writeToFile("calib_parms","Rm_las", calib_parms.Rm_las);
-    EigenFileFuncs::writeToFile("calib_parms","Rm_align", calib_parms.Rm_align);
-    
-    // Save the inclination angle
-    FileFuncs::writeToFile("calib_parms","inc_angle", calib_parms.inclination_angle);
+    // Quality metrics → "calib_res"
+    FileFuncs::writeToFile("calib_res", "inc_sig",  calib_parms.quality.inclination_sigma_deg);
+    FileFuncs::writeToFile("calib_res", "mag_res",  calib_parms.quality.mag_fit_residual);
+    FileFuncs::writeToFile("calib_res", "acc_res",  calib_parms.quality.acc_fit_residual);
+    FileFuncs::writeToFile("calib_res", "las_spr",  calib_parms.quality.laser_plane_spread_deg);
+    FileFuncs::writeToFile("calib_res", "grade",    static_cast<int>(calib_parms.quality.grade));
 }
 void SensorHandler::loadCalibration()
 {
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading calibration data from NVS...");
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "loadCalibration start - Free heap: %u, Largest block: %u", 
+    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "loadCalibration start - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    bool calibration_loaded = true;
-    
-    // Try to load calibration data - if any fails, we'll use default values
-    if (!EigenFileFuncs::readFromFile("static_calib","acc_data", static_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static accelerometer calibration data not found");
-        calibration_loaded = false;
+
+    // Reset all parameters to identity/zero before loading to prevent
+    // stale partial state if some NVS keys are missing.
+    resetCalibration();
+
+    bool ok = true;
+
+    // Raw data → "calib_raw"
+    if (!EigenFileFuncs::readFromFile("calib_raw", "s_acc", static_calib_data.acc_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static acc calibration data not found"); ok = false;
     }
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static acc data - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    if (!EigenFileFuncs::readFromFile("static_calib","mag_data", static_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static magnetometer calibration data not found");
-        calibration_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_raw", "s_mag", static_calib_data.mag_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static mag calibration data not found"); ok = false;
     }
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static mag data - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    if (!EigenFileFuncs::readFromFile("laser_calib","acc_data", laser_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser accelerometer calibration data not found");
-        calibration_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_raw", "l_acc", laser_calib_data.acc_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser acc calibration data not found"); ok = false;
     }
-    if (!EigenFileFuncs::readFromFile("laser_calib","mag_data", laser_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser magnetometer calibration data not found");
-        calibration_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_raw", "l_mag", laser_calib_data.mag_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser mag calibration data not found"); ok = false;
     }
 
-    if (!EigenFileFuncs::readFromFile("calib_parms","Ra_cal", calib_parms.Ra_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Accelerometer calibration matrix not found");
-        calibration_loaded = false;
+    // Computed parameters → "calib_res"
+    if (!EigenFileFuncs::readFromFile("calib_res", "Ra_cal", calib_parms.Ra_cal)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Ra_cal not found"); ok = false;
     }
-    if (!EigenFileFuncs::readFromFile("calib_parms","ba_cal", calib_parms.ba_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Accelerometer bias vector not found");
-        calibration_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_res", "ba_cal", calib_parms.ba_cal)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "ba_cal not found"); ok = false;
     }
-    if (!EigenFileFuncs::readFromFile("calib_parms","Rm_cal", calib_parms.Rm_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Magnetometer calibration matrix not found");
-        calibration_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_res", "Rm_cal", calib_parms.Rm_cal)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Rm_cal not found"); ok = false;
     }
-    if (!EigenFileFuncs::readFromFile("calib_parms","bm_cal", calib_parms.bm_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Magnetometer bias vector not found");
-        calibration_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_res", "bm_cal", calib_parms.bm_cal)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "bm_cal not found"); ok = false;
+    }
+    if (!EigenFileFuncs::readFromFile("calib_res", "Ra_las", calib_parms.Ra_las)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Ra_las not found"); ok = false;
+    }
+    if (!EigenFileFuncs::readFromFile("calib_res", "Rm_las", calib_parms.Rm_las)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Rm_las not found"); ok = false;
+    }
+    if (!EigenFileFuncs::readFromFile("calib_res", "Rm_align", calib_parms.Rm_align)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Rm_align not found"); ok = false;
+    }
+    if (!FileFuncs::readFromFile("calib_res", "inc_angle", calib_parms.inclination_angle)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Inclination angle not found"); ok = false;
     }
 
-    if (!EigenFileFuncs::readFromFile("calib_parms","Ra_las", calib_parms.Ra_las)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser accelerometer alignment matrix not found");
-        calibration_loaded = false;
+    // Quality metrics (non-fatal if missing)
+    FileFuncs::readFromFile("calib_res", "inc_sig", calib_parms.quality.inclination_sigma_deg);
+    FileFuncs::readFromFile("calib_res", "mag_res", calib_parms.quality.mag_fit_residual);
+    FileFuncs::readFromFile("calib_res", "acc_res", calib_parms.quality.acc_fit_residual);
+    FileFuncs::readFromFile("calib_res", "las_spr", calib_parms.quality.laser_plane_spread_deg);
+    int grade_int = 0;
+    if (FileFuncs::readFromFile("calib_res", "grade", grade_int)) {
+        calib_parms.quality.grade = static_cast<NumericalMethods::Grade>(grade_int);
     }
-    if (!EigenFileFuncs::readFromFile("calib_parms","Rm_las", calib_parms.Rm_las)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser magnetometer alignment matrix not found");
-        calibration_loaded = false;
-    }
-    if (!EigenFileFuncs::readFromFile("calib_parms","Rm_align", calib_parms.Rm_align)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Magnetometer alignment matrix not found");
-        calibration_loaded = false;
-    }
-    
-    // Load the inclination angle
-    if (!FileFuncs::readFromFile("calib_parms","inc_angle", calib_parms.inclination_angle)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Inclination angle not found");
-        calibration_loaded = false;
-    }
-    
-    if (calibration_loaded) {
+
+    if (ok) {
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "All calibration data loaded successfully");
     } else {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Some calibration data missing - using default identity matrices and zero biases");
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Device will need to be calibrated before accurate measurements");
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR,
+            "Some calibration data missing - device needs calibration before accurate measurements");
     }
 }
 
 void SensorHandler::removePrevCalib(bool static_calib)
 {
-    // To implement
+    if (static_calib) {
+        if (static_calib_progress <= 0) return;
+        static_calib_progress--;
+        int start = static_calib_progress * N_SAMPLES_PER_ORIENTATION;
+        static_calib_data.acc_data.block<3, N_SAMPLES_PER_ORIENTATION>(0, start).setZero();
+        static_calib_data.mag_data.block<3, N_SAMPLES_PER_ORIENTATION>(0, start).setZero();
+        Debug_csd::debugf(Debug_csd::DEBUG_SENSOR, "Undid static calibration sample, progress now %i/%i",
+                         static_calib_progress, N_ORIENTATIONS);
+    } else {
+        if (las_calib_progress <= 0) return;
+        las_calib_progress--;
+        laser_calib_data.acc_data.col(las_calib_progress).setZero();
+        laser_calib_data.mag_data.col(las_calib_progress).setZero();
+        Debug_csd::debugf(Debug_csd::DEBUG_SENSOR, "Undid laser calibration sample, progress now %i/%i",
+                         las_calib_progress, N_LASER_CAL);
+    }
 }
 
 int SensorHandler::getCalibProgress()
@@ -636,6 +648,10 @@ Vector3f SensorHandler::getAccData()
 {
     return acc_data;
 }
+float SensorHandler::getLasData()
+{
+    return las_data;
+}
 
 const StaticCalibrationData& SensorHandler::getStaticCalibData()
 {
@@ -652,120 +668,86 @@ const DeviceCalibrationParameters& SensorHandler::getCalibParms()
 
 void SensorHandler::dumpCalibToSerial()
 {
-    root.clear();
+    // Incremental streaming — no large static buffer needed
+    // Helper lambdas to print Eigen objects as JSON arrays
+    auto printVec3 = [](const char* label, const Vector3f& v) {
+        Serial.printf("\"%s\":[%.6f,%.6f,%.6f]", label, v(0), v(1), v(2));
+    };
+    auto printMat3 = [](const char* label, const Matrix3f& m) {
+        Serial.printf("\"%s\":[[%.6f,%.6f,%.6f],[%.6f,%.6f,%.6f],[%.6f,%.6f,%.6f]]",
+            label,
+            m(0,0), m(0,1), m(0,2),
+            m(1,0), m(1,1), m(1,2),
+            m(2,0), m(2,1), m(2,2));
+    };
+    auto printMatrixXf = [](const char* label, const Ref<const MatrixXf>& mat) {
+        Serial.printf("\"%s\":[", label);
+        for (int r = 0; r < mat.rows(); r++) {
+            Serial.print("[");
+            for (int c = 0; c < mat.cols(); c++) {
+                Serial.printf("%.6f", mat(r, c));
+                if (c < mat.cols() - 1) Serial.print(",");
+            }
+            Serial.print("]");
+            if (r < mat.rows() - 1) Serial.print(",");
+        }
+        Serial.print("]");
+    };
 
-    JsonArray jarr;
-    MatrixXf static_acc_samples, static_mag_samples, laser_acc_samples, laser_mag_samples;
+    Serial.println("{");
 
-    JsonArray acc_data = root.createNestedArray("static_acc_samples");
-    static_acc_samples = static_calib_data.acc_data;
-    Map<RowMatrixXf>(&eig_arr[0][0], 3, N_ALIGN_MAG_ACC) = static_acc_samples; 
-    copyArray(eig_arr,acc_data);
-    Serial.print("static_acc_samples\n");
-    // serializeJson(acc_data,Serial);
+    // Raw sample data
+    printMatrixXf("static_acc_samples", static_calib_data.acc_data);
+    Serial.println(",");
+    printMatrixXf("static_mag_samples", static_calib_data.mag_data);
+    Serial.println(",");
+    printMatrixXf("laser_acc_samples",  laser_calib_data.acc_data);
+    Serial.println(",");
+    printMatrixXf("laser_mag_samples",  laser_calib_data.mag_data);
+    Serial.println(",");
 
-    JsonArray mag_data = root.createNestedArray("static_mag_samples");
-    static_mag_samples = static_calib_data.mag_data;
-    Map<RowMatrixXf>(&eig_arr[0][0], 3, N_ALIGN_MAG_ACC) = static_mag_samples; 
-    copyArray(eig_arr,mag_data);
-    Serial.print("static_mag_samples\n");
-    // serializeJson(mag_data,Serial);
+    // Calibration parameters
+    printMat3("Ra_static", calib_parms.Ra_cal);  Serial.println(",");
+    printVec3("ba_static", calib_parms.ba_cal);  Serial.println(",");
+    printMat3("Rm_static", calib_parms.Rm_cal);  Serial.println(",");
+    printVec3("bm_static", calib_parms.bm_cal);  Serial.println(",");
+    printMat3("Ra_laser",  calib_parms.Ra_las);  Serial.println(",");
+    printMat3("Rm_laser",  calib_parms.Rm_las);  Serial.println(",");
+    printMat3("Rm_align",  calib_parms.Rm_align); Serial.println(",");
 
-    JsonArray las_acc_data = root.createNestedArray("laser_acc_samples");
-    laser_acc_samples = laser_calib_data.acc_data;
-    Map<RowMatrixXf>(&las_arr[0][0], 3, N_LASER_CAL) = laser_acc_samples; 
-    copyArray(las_arr,las_acc_data);
-    Serial.print("laser_acc_samples\n");
-    // serializeJson(las_acc_data,Serial);
+    Serial.printf("\"inclination_angle\":%.6f,\n", calib_parms.inclination_angle);
 
-    JsonArray las_mag_data = root.createNestedArray("laser_mag_samples");
-    laser_mag_samples = laser_calib_data.mag_data;
-    Map<RowMatrixXf>(&las_arr[0][0], 3, N_LASER_CAL) = laser_mag_samples; 
-    copyArray(las_arr,las_mag_data);
-    Serial.print("laser_mag_samples\n");
-    serializeJson(las_mag_data,Serial);
+    // Quality metrics
+    Serial.printf("\"quality\":{\"inclination_sigma_deg\":%.6f,\"mag_fit_residual\":%.6f,"
+                  "\"acc_fit_residual\":%.6f,\"laser_plane_spread_deg\":%.6f,\"grade\":%d}\n",
+        calib_parms.quality.inclination_sigma_deg,
+        calib_parms.quality.mag_fit_residual,
+        calib_parms.quality.acc_fit_residual,
+        calib_parms.quality.laser_plane_spread_deg,
+        static_cast<int>(calib_parms.quality.grade));
 
-
-    // JsonObject parms = root.createNestedObject("parms");
-    JsonArray Ra_static = root.createNestedArray("Ra_static");
-    JsonArray ba_static = root.createNestedArray("ba_static");
-    JsonArray Rm_static = root.createNestedArray("Rm_static");
-    JsonArray bm_static = root.createNestedArray("bm_static");
-    JsonArray Ra_laser = root.createNestedArray("Ra_laser");
-    JsonArray Rm_laser = root.createNestedArray("Rm_laser");
-    JsonArray Rm_align = root.createNestedArray("Rm_align");
-
-
-    float vec3fdata[3];
-    float mat3fdata[3][3];
-
-    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Ra_cal; 
-    copyArray(mat3fdata,Ra_static);
-    Map<Vector3f>(&vec3fdata[0], 3) = calib_parms.ba_cal; 
-    copyArray(vec3fdata,ba_static);
-
-
-    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Rm_cal; 
-    copyArray(mat3fdata,Rm_static);
-    Map<Vector3f>(&vec3fdata[0], 3) = calib_parms.bm_cal; 
-    copyArray(vec3fdata,bm_static);
-
-
-    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Ra_las; 
-    copyArray(mat3fdata,Ra_laser);
-
-    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Rm_las; 
-    copyArray(mat3fdata,Rm_laser);
-
-
-    Map<RowMatrixXf>(&mat3fdata[0][0], 3, 3) = calib_parms.Rm_align; 
-    copyArray(mat3fdata,Rm_align);
-
-    serializeJson(root,Serial);
-
-    Serial.println("\nInclination angle:");
-    Serial.println(getCalibParms().inclination_angle);
-
+    Serial.println("}");
 }
 
 void SensorHandler::loadRawCalibrationData()
 {
     Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading raw calibration data from NVS...");
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "loadRawCalibrationData start - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    bool data_loaded = true;
-    
-    // Only load the raw sensor data needed for calibration - not the computed parameters
-    if (!EigenFileFuncs::readFromFile("static_calib","acc_data", static_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static accelerometer calibration data not found");
-        data_loaded = false;
+
+    bool ok = true;
+    if (!EigenFileFuncs::readFromFile("calib_raw", "s_acc", static_calib_data.acc_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static acc data not found"); ok = false;
     }
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static acc data - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    if (!EigenFileFuncs::readFromFile("static_calib","mag_data", static_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static magnetometer calibration data not found");
-        data_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_raw", "s_mag", static_calib_data.mag_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static mag data not found"); ok = false;
     }
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading static mag data - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    if (!EigenFileFuncs::readFromFile("laser_calib","acc_data", laser_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser accelerometer calibration data not found");
-        data_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_raw", "l_acc", laser_calib_data.acc_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser acc data not found"); ok = false;
     }
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading laser acc data - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    if (!EigenFileFuncs::readFromFile("laser_calib","mag_data", laser_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser magnetometer calibration data not found");
-        data_loaded = false;
+    if (!EigenFileFuncs::readFromFile("calib_raw", "l_mag", laser_calib_data.mag_data)) {
+        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser mag data not found"); ok = false;
     }
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loading laser mag data - Free heap: %u, Largest block: %u", 
-                     ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-    
-    if (data_loaded) {
+
+    if (ok) {
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Raw calibration data loaded successfully");
     } else {
         Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Some raw calibration data missing - FORCE_CAL may fail");

@@ -10,8 +10,7 @@ static QueueHandle_t bleSendQueue;
 static SemaphoreHandle_t bleDataMutex;
 static bool deviceConnected = false;
 
-static MeasurementData dataToSend;
-static char payload[64];
+static MeasurementRecord dataToSend;
 
 
 // Server pointer
@@ -39,7 +38,7 @@ static NimBLECharacteristic* pRxCharacteristic = nullptr;
 // Advertising pointer
 static NimBLEAdvertising *pAdvertising = nullptr;
 
-static bool data_received_successfully = false;
+static volatile bool data_received_successfully = false;
 
 // BLE UUIDs
 #define SERVICE_UUID        "12345678-1234-1234-1234-1234567890ab"
@@ -165,7 +164,7 @@ void bleTask(void* parameter) {
     );
 
     pRcvCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_READY,
+        CHARACTERISTIC_RECEIVED,
         NIMBLE_PROPERTY::NOTIFY
     );
 
@@ -182,22 +181,27 @@ void bleTask(void* parameter) {
     pAdvertising->start();
 
     for (;;) {
-        // Wait for MeasurementData from queue (from core 0)
+        // Wait for MeasurementRecord from queue (from core 0)
         if (xQueueReceive(bleSendQueue, &dataToSend, 100 / portTICK_PERIOD_MS) == pdTRUE) {
             if (deviceConnected && pRcvCharacteristic) {
-                //Keep trying until data is received successfully
-                while (!data_received_successfully) {
-                    snprintf(payload, sizeof(payload), "{\"h\":%.2f,\"i\":%.2f,\"r\":%.2f,\"d\":%.2f,\"ts\":%lu}",
-                        dataToSend.getHeading(), dataToSend.getInclination(), dataToSend.getRoll(), dataToSend.getDistance(), dataToSend.getTimestamp());
-                    pHCharacteristic->setValue(dataToSend.getHeading());
-                    pICharacteristic->setValue(dataToSend.getInclination());
-                    pRCharacteristic->setValue(dataToSend.getRoll());
-                    pDCharacteristic->setValue(dataToSend.getDistance());
-                    pTSCharacteristic->setValue(dataToSend.getTimestamp());
+                //Keep trying until data is received successfully, with retry limit
+                int retries = 0;
+                const int MAX_BLE_RETRIES = 10;
+                while (!data_received_successfully && deviceConnected && retries < MAX_BLE_RETRIES) {
+                    pHCharacteristic->setValue(dataToSend.heading);
+                    pICharacteristic->setValue(dataToSend.inclination);
+                    pRCharacteristic->setValue(dataToSend.roll);
+                    pDCharacteristic->setValue(dataToSend.distance);
+                    pTSCharacteristic->setValue(dataToSend.timestamp);
                     pRdyCharacteristic->setValue(true);
                     pRdyCharacteristic->notify();
                     vTaskDelay(1000 / portTICK_PERIOD_MS);
+                    retries++;
                 }
+                if (!data_received_successfully) {
+                    Serial.println("BLE: Data send failed after retries or disconnect");
+                }
+                data_received_successfully = false;
             }
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -205,7 +209,7 @@ void bleTask(void* parameter) {
 }
 
 // API: Call from Core 0 to queue data for BLE
-void sendBLEData(const MeasurementData& data) {
+void sendBLEData(const MeasurementRecord& data) {
     if (!bleSendQueue) {
         Serial.println("BLE: Queue not initialized");
         return;
@@ -219,7 +223,7 @@ void sendBLEData(const MeasurementData& data) {
 
 // API: Start BLE task on Core 1
 void startBLETask() {
-    bleSendQueue = xQueueCreate(4, sizeof(MeasurementData));
+    bleSendQueue = xQueueCreate(4, sizeof(MeasurementRecord));
     bleDataMutex = xSemaphoreCreateMutex();
     xTaskCreatePinnedToCore(
         bleTask,

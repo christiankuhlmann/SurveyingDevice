@@ -1,0 +1,10 @@
+#ifndef H_NUMERICAL_METHODS_EIGEN
+#define H_NUMERICAL_METHODS_EIGEN
+
+#include "utils.h"
+#include "InertialAlignment.h"
+#include "LaserAlignment.h"
+#include "Calibration.h"
+#include "CalibrationQuality.h"
+
+#endif

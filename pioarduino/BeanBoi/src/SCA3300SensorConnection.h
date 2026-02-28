@@ -28,13 +28,22 @@ inline Vector3f SCA3300SensorConnection::getMeasurement()
     Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Getting measurement...");
     Eigen::Vector3f data;
     bool available = false;
+    int retries = 0;
+    const int MAX_SCA_RETRIES = 50;
 
-    while (!available)
+    while (!available && retries < MAX_SCA_RETRIES)
     {
         available = sca3300_connection.available();
         if (!available) {
             sca3300_connection.reset();
+            retries++;
         }
+    }
+
+    if (!available) {
+        Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"ERROR: SCA3300 not responding after retries");
+        data << 0, 0, 0;
+        return data;
     }
 
     Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Requesting data...");

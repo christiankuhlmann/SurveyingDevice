@@ -22,6 +22,8 @@ extern LDK2MSensorConnection sc_laser;
 extern SensorHandler sh;
 extern OLED::DisplayHandler dh;
 extern bool y_n_selector;
+extern int history_scroll_index;
+extern unsigned int current_file_id;
 
 enum LoadingEnum
 {
@@ -59,6 +61,7 @@ void displayMode();
 void displayCalibSaveYN();
 void displayCalibRemYN();
 void displayCalibExitYN();
+void displayCalibrationQuality();
 
 void displayStaticCalib(int n_calib);
 void displayLaserCalib(int n_calib);

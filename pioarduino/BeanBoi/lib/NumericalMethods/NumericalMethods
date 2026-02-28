@@ -1,0 +1,19 @@
+#ifndef H_NUMERICAL_METHODS
+#define H_NUMERICAL_METHODS
+
+#define USE_EIGEN
+
+#if defined(USE_STM32)
+    #include "STM32/STM32"
+    #define BACKEND_NAME "CMSIS-DSP"
+#elif defined(USE_ESP)
+    #include "ESP/ESP"
+    #define BACKEND_NAME "ESP-DSP"
+#elif defined(USE_ARDUINO)
+    #include "Eigen/Eigen"
+    #define BACKEND_NAME "Eigen"
+#else
+    #include "Eigen/Eigen"
+    #define BACKEND_NAME "Eigen"
+#endif
+#endif

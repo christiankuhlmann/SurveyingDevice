@@ -2,153 +2,194 @@
 #define CAVESURVEYDEVICE_SENSORHANDLER_H
 
 #include <ArduinoEigen.h>
-#include <NumericalMethods.h>
+#include <NumericalMethods>
 #include "Sensors.h"
 #include <EigenFileFuncs.h>
 #include <debug_csd.h>
-
-
-#define FNAME_LENGTH 6
-#define VARNAME_LENGTH 4
+#include <freertos/semphr.h>
 
 using namespace Eigen;
-// using namespace Debug_csd;
 
-// Define constants for general use
+// ---------------------------------------------------------------------------
+// Device-runtime constants (calibration-algorithm constants come from
+// NumericalMethods config.h: N_ALIGN_MAG_ACC, N_LASER_CAL, N_ORIENTATIONS,
+// N_SAMPLES_PER_ORIENTATION, DEVICE_LENGTH)
+// ---------------------------------------------------------------------------
+const int   N_SHOT_SAMPLES   = 100;    ///< Samples averaged per measurement shot
+const int   N_UPDATE_SAMPLES = 5;      ///< Samples averaged per display-refresh reading
+const int   N_STABILISATION  = 10;     ///< Ring-buffer depth for stabilisation check
+const float STDEV_LIMIT      = 0.05f;  ///< Accelerometer-norm σ threshold for stability
 
-const int N_MAG_CAL_HEADING = 25; // Size of magnetometer calibration matrix
-const int N_MAG_CAL_INCLINATION = 15; // Size of magnetometer calibration matrix
-const int N_MAG_CAL = N_MAG_CAL_HEADING * N_MAG_CAL_INCLINATION;
-const int N_SHOT_SAMPLES = 100;
-const int N_UPDATE_SAMPLES = 10;
-const float STDEV_LIMIT = 0.05;
-const int N_STABILISATION = 10;
+// ---------------------------------------------------------------------------
+// Data structures
+// ---------------------------------------------------------------------------
 
+/// Calibration & alignment parameters persisted to NVS
 struct DeviceCalibrationParameters
 {
     Matrix3f Ra_cal, Rm_cal, Ra_las, Rm_las, Rm_align;
     Vector3f ba_cal, bm_cal;
     float inclination_angle;
+    NumericalMethods::CalibrationQuality quality;
 };
 
-struct LaserCalibrationData{
-    Matrix<float,3,N_LASER_CAL> mag_data;
-    Matrix<float,3,N_LASER_CAL> acc_data;
+/// Raw laser calibration samples (3 × N_LASER_CAL per sensor)
+struct LaserCalibrationData {
+    Matrix<float, 3, N_LASER_CAL> mag_data;
+    Matrix<float, 3, N_LASER_CAL> acc_data;
 };
 
-struct StaticCalibrationData{
-    Matrix<float,3,N_ALIGN_MAG_ACC> mag_data;
-    Matrix<float,3,N_ALIGN_MAG_ACC> acc_data;
+/// Raw static calibration samples (3 × N_ALIGN_MAG_ACC per sensor)
+struct StaticCalibrationData {
+    Matrix<float, 3, N_ALIGN_MAG_ACC> mag_data;
+    Matrix<float, 3, N_ALIGN_MAG_ACC> acc_data;
 };
 
-struct ShotData{
-    Vector3f m, g, HIR, v;
-    float d;
-    int ID;
+/// Unified measurement record – replaces the old ShotData and BLE MeasurementData
+struct MeasurementRecord {
+    // Corrected scalar angles (degrees)
+    float heading     = 0.0f;
+    float inclination = 0.0f;
+    float roll        = 0.0f;
+
+    // Distance (metres, includes DEVICE_LENGTH offset)
+    float distance = 0.0f;
+
+    // Raw corrected sensor vectors
+    Vector3f mag;
+    Vector3f acc;
+
+    // Cartesian direction unit vector
+    Vector3f direction;
+
+    // Metadata
+    int      ID        = 0;
+    uint32_t timestamp = 0;
+
+    /// Pack the scalar fields into a flat byte buffer for BLE transmission.
+    /// Returns the number of bytes written (20).
+    int toBLEPayload(uint8_t* buf, size_t bufLen) const;
 };
 
-bool getFileName(const unsigned int fileID, char (&fname)[FNAME_LENGTH]);
-bool getVarName(const unsigned int counter, char (&varname)[VARNAME_LENGTH]);
-bool getCounter(const unsigned int fileID, unsigned int &counter);
-bool setCounter(const unsigned int fileID, const unsigned int &counter);
-bool saveShotData(const ShotData &sd, const unsigned int fileID);
-bool readShotData(ShotData &sd, unsigned int fileID, unsigned int shotID);
-bool readShotData(ShotData &sd, unsigned int fileID);
+// ---------------------------------------------------------------------------
+// Shot file I/O helpers (namespace "SD000" – "SD999")
+// ---------------------------------------------------------------------------
+bool getFileName(unsigned int fileID, char (&fname)[FNAME_LENGTH]);
+bool getVarName(unsigned int counter, char (&varname)[VARNAME_LENGTH]);
+bool getCounter(unsigned int fileID, unsigned int &counter);
+bool setCounter(unsigned int fileID, const unsigned int &counter);
+bool saveShotData(const MeasurementRecord &rec, unsigned int fileID);
+bool readShotData(MeasurementRecord &rec, unsigned int fileID, unsigned int shotID);
+bool readShotData(MeasurementRecord &rec, unsigned int fileID);
 
+// ---------------------------------------------------------------------------
+// SensorHandler
+// ---------------------------------------------------------------------------
 class SensorHandler
 {
 private:
-    bool MAG_COMBINED_CAL = true; // Calibrate magnetometer separately to alignment
+    int static_calib_progress;  // 0 → N_ORIENTATIONS
+    int las_calib_progress;     // 0 → N_LASER_CAL
 
-    int static_calib_progress; // Goes from 0 to N_ORIENTATIONS
-    int las_calib_progress; // Goes from 0 to N_LASER_CAL
+    // Mutex protecting shared sensor/calibration state
+    SemaphoreHandle_t mutex;
 
-    // Sensor objects - define as reference to object otherwise full mem is allocated (bad)
+    // Sensor objects (references – no extra allocation)
     Accelerometer &acc;
-    Magnetometer &mag;
-    Laser &las;
+    Magnetometer  &mag;
+    Laser         &las;
 
-    // Calibration and alignment data
-    LaserCalibrationData laser_calib_data;
+    // Raw calibration sample buffers
+    LaserCalibrationData  laser_calib_data;
     StaticCalibrationData static_calib_data;
 
-    // Calibration parameters
+    // Computed calibration / alignment parameters
     DeviceCalibrationParameters calib_parms;
 
-    // Data collected from sensors
-    ShotData shot_data, corrected_shot_data;
-    Vector3f acc_data, mag_data, corrected_acc_data, corrected_mag_data;
-    float las_data;
+    // Live sensor readings & corrected measurement
+    MeasurementRecord shot_data;           ///< Raw (uncorrected) shot
+    MeasurementRecord corrected_shot_data; ///< Corrected shot / live reading
+    Vector3f acc_data, mag_data;
+    float    las_data = 0.0f;
 
 public:
     SensorHandler(Accelerometer &a, Magnetometer &m, Laser &l);
 
     void init();
 
+    /// Try to acquire the mutex (non-blocking). Returns true if acquired.
+    bool tryLock();
+    /// Acquire the mutex (blocking).
+    void lock();
+    /// Release the mutex.
+    void unlock();
+
+    // --- Accessors ---
     Vector3f getAccData();
     Vector3f getMagData();
-    float getLasData();
+    float    getLasData();
 
-    const StaticCalibrationData &getStaticCalibData();
-    const LaserCalibrationData &getLaserCalibData();
-    const DeviceCalibrationParameters &getCalibParms();
+    const StaticCalibrationData        &getStaticCalibData();
+    const LaserCalibrationData         &getLaserCalibData();
+    const DeviceCalibrationParameters  &getCalibParms();
 
+    // --- Live measurement ---
     void update();
-    Vector3f getCardan(bool corrected = true);
-    Vector3f getCartesian(bool corrected = true);
-    Vector3f getFinalMeasurement(bool corrected = true);
+    void correctData(Vector3f &m, Vector3f &g);
+    MeasurementRecord getShotData(bool corrected = true);
 
+    // --- Flash helpers ---
     void eraseFlash();
     void getFlashStats();
 
-    void correctData(Vector3f &m, Vector3f &g);
-    
+    // --- Shot history ---
+    int  getShotCount(unsigned int fileID);
+    bool readShotByIndex(MeasurementRecord &rec, unsigned int fileID, unsigned int index);
+
+    // --- Calibration lifecycle ---
     void resetCalibration();
     void saveCalibration();
     void loadCalibration();
     void loadRawCalibrationData();
     void removePrevCalib(bool static_calib);
-    int getCalibProgress();
-    int getCalibProgress(bool static_calib);
-    
+    int  getCalibProgress();
+    int  getCalibProgress(bool static_calib);
+
+    // --- Serial dump ---
     void dumpCalibToSerial();
 
     /**
-     * @brief Take shot using laser by default.
-     * Returns 0 if success, anything else is an error.
-     * 
-     * @param laser_reading 
-     * @return int 
+     * @brief Take a shot (optionally with laser).
+     * @return 0 on success, non-zero on error.
      */
-    int takeShot(const bool laser_reading = true, const bool use_stabilisation = true);
+    int takeShot(bool laser_reading = true, bool use_stabilisation = true);
 
     /**
-     * @brief Collects a sample of alignment data for joint accelerometer and magnetometer alignment.
-     * Returns the current progress out of N_MAG_ACC_ALIGN, -1 if complete.
-     * 
-     * @return int 
+     * @brief Collect one orientation of static calibration data.
+     * @return current progress (1 → N_ORIENTATIONS), or N_ORIENTATIONS when full.
      */
     int collectStaticCalibData();
 
     /**
-     * @brief Collects a sample of alignment data for laser alignment.
-     * Returns the current progress out of N_LASER_CAL, -1 if complete.
-     * 
-     * @return int 
+     * @brief Collect one orientation of laser calibration data.
+     * @return current progress (1 → N_LASER_CAL), or N_LASER_CAL when full.
      */
     int collectLaserCalibData();
 
-
+    /**
+     * @brief Run ellipsoid calibration on static data.
+     */
     int calibrate();
+
+    /**
+     * @brief Run laser + CWB alignment, then compute calibration quality.
+     */
     int align();
-    int staticAlign();
+
+    /**
+     * @brief Evaluate calibration quality from stored intermediate data.
+     */
     void validateCalibrationQuality();
-
-    Vector2f getDirection();
-    ShotData getShotData(bool corrected = true);
-
-
-
-    void setCalibParms(const DeviceCalibrationParameters &parms);
 };
+
 #endif

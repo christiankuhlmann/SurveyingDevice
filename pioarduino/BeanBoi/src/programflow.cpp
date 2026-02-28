@@ -1,4 +1,5 @@
 #include "programflow.h"
+#include "FreeRTOS2.h"
 
 // Global variable definitions
 RM3100 rm3100;
@@ -12,6 +13,8 @@ LDK2MSensorConnection sc_laser(ldk2m);
 SensorHandler sh(sc_accelerometer, sc_magnetometer, sc_laser);
 OLED::DisplayHandler dh;
 bool y_n_selector = true;
+int history_scroll_index = 0;
+unsigned int current_file_id = 0;
 
 // Function implementations
 int getBatteryVoltage()
@@ -22,13 +25,13 @@ int getBatteryVoltage()
     measuredvbat /= 1024; // convert to voltage
     
     if (measuredvbat >= 3.98) {
-        return 100; // Between 75% and 100%
-    } else if (3.98 > measuredvbat >= 3.84) {
-        return 70; // Between 50% and 75%
-    } else if (3.84 > measuredvbat >= 3.75) {
-        return 40; // Between 25% and 50%
-    } else if (3.75 > measuredvbat >= 3.69) {
-        return 20; // Between 25% and 50%
+        return 100;
+    } else if (measuredvbat >= 3.84) {
+        return 70;
+    } else if (measuredvbat >= 3.75) {
+        return 40;
+    } else if (measuredvbat >= 3.69) {
+        return 20;
     } else {
         return 5;
     }
@@ -52,7 +55,10 @@ void laserBeep()
 int takeShot()
 {
     // Only beep if the shot was taken successfully
-    if (!sh.takeShot()) {
+    sh.lock();
+    int result = sh.takeShot();
+    sh.unlock();
+    if (!result) {
         sc_laser.beep();
         return 0;
     } else {
@@ -62,6 +68,7 @@ int takeShot()
 
 int getCalib()
 {
+    sh.lock();
     if (sh.getCalibProgress() < N_ORIENTATIONS)
     {
         sh.collectStaticCalibData();
@@ -69,12 +76,9 @@ int getCalib()
     {
         sh.collectLaserCalibData();
     }
-    // } else
-    // {
-    //     sh.calibrate();
-    //     sh.align();
-    // }
-    return sh.getCalibProgress();
+    int progress = sh.getCalibProgress();
+    sh.unlock();
+    return progress;
 }
 
 void saveCalib()
@@ -197,11 +201,16 @@ void displayMode()
 
 void displayIdle()
 {
-    sh.update();
+    // Non-blocking try-lock: skip sensor update if compute task holds the mutex
+    // (e.g. during calibration or shot-taking). Display renders stale data for that frame.
+    if (sh.tryLock()) {
+        sh.update();
+        sh.unlock();
+    }
     dh.clearDisplay();
-    dh.drawHeading(RAD_TO_DEG * sh.getShotData().HIR(0));
-    dh.drawInclination(RAD_TO_DEG * sh.getShotData().HIR(1));
-    dh.drawRoll(RAD_TO_DEG * sh.getShotData().HIR(2));
+    dh.drawHeading(sh.getShotData().heading);
+    dh.drawInclination(sh.getShotData().inclination);
+    dh.drawRoll(sh.getShotData().roll);
     displayBatteryStatus();
     dh.update();
 
@@ -232,6 +241,63 @@ void displayHistory()
 {
     dh.clearDisplay();
     displayBatteryStatus();
+
+    int shot_count = sh.getShotCount(current_file_id);
+    if (shot_count <= 0) {
+        dh.drawCentered("No shots", SCREEN_WIDTH/2, TOP_BAR_HEIGHT + 30, &Font12);
+        dh.update();
+        return;
+    }
+
+    // Clamp scroll index
+    if (history_scroll_index >= shot_count) history_scroll_index = shot_count - 1;
+    if (history_scroll_index < 0) history_scroll_index = 0;
+
+    // Display up to 5 shots per page using Font8 (8px height + 2px gap = 10px per row)
+    // Available vertical space: 128 - 16 (top bar) - 12 (title) = 100px → 10 rows at 10px each
+    const int ROWS_PER_PAGE = 5;
+    const int ROW_HEIGHT = 10;
+    int page_start = (history_scroll_index / ROWS_PER_PAGE) * ROWS_PER_PAGE;
+
+    // Title
+    char title[16];
+    snprintf(title, sizeof(title), "Shots (%d)", shot_count);
+    dh.drawCentered(String(title), SCREEN_WIDTH/2, TOP_BAR_HEIGHT + 4, &Font8);
+
+    // Draw shot rows
+    MeasurementRecord rec;
+    for (int i = 0; i < ROWS_PER_PAGE; i++) {
+        int shot_idx = page_start + i;
+        if (shot_idx >= shot_count) break;
+
+        // Shot IDs in NVS are 1-indexed
+        int y = TOP_BAR_HEIGHT + 14 + i * ROW_HEIGHT;
+        bool selected = (shot_idx == history_scroll_index);
+
+        if (selected) {
+            Paint_DrawRectangle(0, y - 1, 63, y + 8, WHITE, DOT_PIXEL_1X1, DRAW_FILL_FULL);
+        }
+
+        if (sh.readShotByIndex(rec, current_file_id, shot_idx + 1)) {
+            char line[28];
+            snprintf(line, sizeof(line), "%03d %5.1f %5.1f %4.1f",
+                     shot_idx + 1, rec.heading, rec.inclination, rec.distance);
+            if (selected) {
+                dh.drawLeftBlack(String(line), 1, y, &Font8);
+            } else {
+                dh.drawLeft(String(line), 1, y, &Font8);
+            }
+        }
+    }
+
+    // Scroll indicators
+    if (page_start > 0) {
+        dh.drawCentered("^", SCREEN_WIDTH/2, TOP_BAR_HEIGHT + 12, &Font8);
+    }
+    if (page_start + ROWS_PER_PAGE < shot_count) {
+        dh.drawCentered("v", SCREEN_WIDTH/2, TOP_BAR_HEIGHT + 14 + ROWS_PER_PAGE * ROW_HEIGHT, &Font8);
+    }
+
     dh.update();
 }
 
@@ -256,6 +322,36 @@ void displayCalibExitYN()
     dh.clearDisplay();
     dh.displayYN("Exit", "calib?", y_n_selector);
     displayBatteryStatus();
+    dh.update();
+}
+
+void displayCalibrationQuality()
+{
+    const auto &q = sh.getCalibParms().quality;
+    dh.clearDisplay();
+    displayBatteryStatus();
+
+    // Title: grade name
+    const char* grade_str = NumericalMethods::gradeToString(q.grade);
+    dh.drawCentered(String(grade_str), SCREEN_WIDTH/2, TOP_BAR_HEIGHT + 5, &Font12);
+
+    // Metrics using Font8 (compact)
+    char line[26];
+    snprintf(line, sizeof(line), "Inc s: %.2f dg", q.inclination_sigma_deg);
+    dh.drawLeft(String(line), 1, TOP_BAR_HEIGHT + 25, &Font8);
+
+    snprintf(line, sizeof(line), "Mag r: %.4f", q.mag_fit_residual);
+    dh.drawLeft(String(line), 1, TOP_BAR_HEIGHT + 37, &Font8);
+
+    snprintf(line, sizeof(line), "Acc r: %.4f", q.acc_fit_residual);
+    dh.drawLeft(String(line), 1, TOP_BAR_HEIGHT + 49, &Font8);
+
+    snprintf(line, sizeof(line), "Las s: %.2f dg", q.laser_plane_spread_deg);
+    dh.drawLeft(String(line), 1, TOP_BAR_HEIGHT + 61, &Font8);
+
+    // Prompt
+    dh.drawCentered("ON: continue", SCREEN_WIDTH/2, TOP_BAR_HEIGHT + 80, &Font8);
+
     dh.update();
 }
 
@@ -398,6 +494,12 @@ void executeMenuAction(OLED::MenuEnum menu_action)
     case OLED::MenuEnum::MENU_DUMP_DATA:
         sh.dumpCalibToSerial();
     break;
+
+    case OLED::MenuEnum::MENU_HISTORY:
+        history_scroll_index = 0;
+        next_mode = MODE_HISTORY;
+        display_mode = DISP_HISTORY;
+    break;
     
     case OLED::MenuEnum::MENU_FORCE_CAL:
         Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "FORCE_CAL start - Free heap: %u, Largest block: %u", 
@@ -431,7 +533,8 @@ void executeMenuAction(OLED::MenuEnum menu_action)
 }
 
 void runCalibration(){
+    sh.lock();
     sh.calibrate();
     sh.align();
-    sh.saveCalibration();
+    sh.unlock();
 }

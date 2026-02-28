@@ -2,13 +2,35 @@
 
 namespace NumericalMethods{
    
-void alignLaser(const MatrixXf &g, const MatrixXf &m, Matrix3f &Racc, Matrix3f &Rmag)
+Vector3f normalVec(const Ref<const Matrix3Xf> &point_cloud)
+{
+    Vector3f normal;
+    MatrixXf left_singular_mat;
+
+    // Subtract mean from each point otherwise its wrong XD
+    // https://www.ltu.se/cms_fs/1.51590!/svd-fitting.pdf
+    MatrixXf mean_adj_point_cloud = point_cloud;
+    mean_adj_point_cloud = mean_adj_point_cloud.colwise()-mean_adj_point_cloud.rowwise().mean();
+
+    JacobiSVD<MatrixXf> svd(mean_adj_point_cloud, ComputeThinU | ComputeThinV);
+    left_singular_mat = svd.matrixU();
+    // U_cols = left_singular_mat.cols();
+    // 3rd col of U contains normal vec
+    normal << left_singular_mat(0,2), left_singular_mat(1,2), left_singular_mat(2,2);
+
+    if (normal.dot(point_cloud.col(0)) < 0.0){ normal = -normal; }
+
+    return normal;
+};
+
+
+void alignLaser(const Ref<const Matrix3Xf> &g, const Ref<const Matrix3Xf> &m, Matrix3f &Racc, Matrix3f &Rmag)
 {
     alignToNorm(g, Racc);
     alignToNorm(m, Rmag);
 }
 
-void alignToNorm(const Matrix<float,3,N_LASER_CAL> &point_cloud, Matrix3f &R)
+void alignToNorm(const Ref<const Matrix3Xf> &point_cloud, Matrix3f &R)
 {
     // Calculate normal to plane
     Vector3f target_vector;
@@ -30,7 +52,13 @@ void alignToNorm(const Matrix<float,3,N_LASER_CAL> &point_cloud, Matrix3f &R)
      */
    
     Vector3f vector_x = target_vector;
-    Vector3f vector_z = vector_x.cross(Vector3f(0,1,0));
+
+    // Degeneracy guard: when vector_x is near-parallel to (0,1,0) the
+    // cross product degenerates to a zero vector.  Switch reference.
+    Vector3f ref = (fabsf(vector_x.dot(Vector3f(0,1,0))) > 0.9f)
+                 ? Vector3f(0,0,1)
+                 : Vector3f(0,1,0);
+    Vector3f vector_z = vector_x.cross(ref);
     Vector3f vector_y = vector_z.cross(-vector_x);
 
     vector_x.normalize();

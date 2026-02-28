@@ -1,18 +1,12 @@
 #ifndef NUMERICAL_METHODS_UTILS_H
 #define NUMERICAL_METHODS_UTILS_H
 
-
-#define NUMERICAL_METHODS_ARDUINO_EIGEN
-// #define NUMERICAL_METHODS_EIGEN
-
-#ifdef NUMERICAL_METHODS_ARDUINO_EIGEN
-  #include <ArduinoEigenDense.h>
-  using namespace Eigen;
-#else
-#ifdef NUMERICAL_METHODS_EIGEN
-  #include <Eigen/Dense>
-  using namespace Eigen;
+#ifndef RAD_TO_DEG
+#define RAD_TO_DEG 57.29577951f                             // Radians to degrees conversion
 #endif
+
+#ifndef DEG_TO_RAD
+#define DEG_TO_RAD 0.01745329252f                           // Degrees to radians conversion
 #endif
 
 #include "config.h"

@@ -5,14 +5,6 @@
 namespace NumericalMethods {
 
 /**
- * @brief Calculates the normal vector characterising the best-fit plane fit to a point-cloud
- * 
- * @param point_cloud 3xN matrix of input data
- * @return Vector3f Normal vector characterising best-fit plane
- */
-Vector3f normalVec(const Ref<const MatrixXf> &point_cloud);
-
-/**
  * @brief Finds the parameters of the ellipsoid which best fits the input data
  * 
  * @param samples 3xN matrix of input data
@@ -69,5 +61,26 @@ Vector<float,12> calculateEllipsoidTransformation(const Matrix3f &M, const Vecto
   * @param b_out Correction bias
   */
  void calculateEllipsoidTransformation(const Matrix3f &M, const Vector3f &n, const float &d, Matrix3f &R_out, Vector3f &b_out);
+
+/**
+ * @brief Calibrates a set of 3D samples using ellipsoid fitting
+ * 
+ * @param samples 3xN matrix of input data
+ * @param R_out Output rotation matrix
+ * @param b_out Output bias vector
+ */
+void calibrateEllipsoid(const Ref<const MatrixXf> &samples, Matrix3f &R_out, Vector3f &b_out);
+
+/**
+ * @brief Computes the RMS deviation of calibrated data from the unit sphere.
+ *        Returns sqrt(mean((||col|| - 1)^2)).
+ *        Lower values indicate better ellipsoid-fit quality.
+ * 
+ * @param calibrated 3xN matrix of calibrated (and normalised) data
+ * @return float RMS residual
+ */
+float ellipsoidFitResidual(const Ref<const Matrix3Xf> &calibrated);
+
+
 }
 #endif
