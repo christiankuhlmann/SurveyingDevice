@@ -1,5 +1,7 @@
 #include "programflow.h"
 #include "FreeRTOS2.h"
+#include <ble_manager.h>
+#include <esp_task_wdt.h>
 
 // Global variable definitions
 RM3100 rm3100;
@@ -12,9 +14,9 @@ LDK2MSensorConnection sc_laser(ldk2m);
 
 SensorHandler sh(sc_accelerometer, sc_magnetometer, sc_laser);
 OLED::DisplayHandler dh;
-bool y_n_selector = true;
-int history_scroll_index = 0;
-unsigned int current_file_id = 0;
+std::atomic<bool> y_n_selector{true};
+std::atomic<int> history_scroll_index{0};
+std::atomic<unsigned int> current_file_id{0};
 
 // Function implementations
 int getBatteryVoltage()
@@ -54,12 +56,26 @@ void laserBeep()
 
 int takeShot()
 {
-    // Only beep if the shot was taken successfully
+    // Block shot-taking if sensors are not initialised
+    if (!sh.isSensorsReady()) {
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "Cannot take shot: sensors not ready");
+        return 1;
+    }
+    // Only beep and persist if the shot was taken successfully
     sh.lock();
     int result = sh.takeShot();
     sh.unlock();
-    if (!result) {
+    if (result != 1) {
         sc_laser.beep();
+        if (result == 2) {
+            Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Shot taken with low quality (outlier fallback)");
+        }
+        // Persist to NVS and send over BLE
+        MeasurementRecord rec = sh.getShotData(true);
+        if (!saveShotData(rec, current_file_id)) {
+            Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_FILE, "Failed to save shot data to NVS");
+        }
+        sendBLEData(rec);
         return 0;
     } else {
         return 1;
@@ -68,6 +84,10 @@ int takeShot()
 
 int getCalib()
 {
+    if (!sh.isSensorsReady()) {
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "Cannot calibrate: sensors not ready");
+        return 0;
+    }
     sh.lock();
     if (sh.getCalibProgress() < N_ORIENTATIONS)
     {
@@ -86,7 +106,7 @@ void saveCalib()
     sh.saveCalibration();
 }
 
-void removePreviosCalib()
+void removePreviousCalib()
 {
     sh.removePrevCalib((sh.getCalibProgress() <= N_ORIENTATIONS));
 }
@@ -202,15 +222,18 @@ void displayMode()
 void displayIdle()
 {
     // Non-blocking try-lock: skip sensor update if compute task holds the mutex
-    // (e.g. during calibration or shot-taking). Display renders stale data for that frame.
+    // (e.g. during calibration or shot-taking). Display renders cached data for that frame.
+    static MeasurementRecord cached_data;
     if (sh.tryLock()) {
         sh.update();
+        cached_data = sh.getShotData();
         sh.unlock();
     }
+    // If lock not acquired, cached_data retains the last consistent snapshot
     dh.clearDisplay();
-    dh.drawHeading(sh.getShotData().heading);
-    dh.drawInclination(sh.getShotData().inclination);
-    dh.drawRoll(sh.getShotData().roll);
+    dh.drawHeading(cached_data.heading);
+    dh.drawInclination(cached_data.inclination);
+    dh.drawRoll(cached_data.roll);
     displayBatteryStatus();
     dh.update();
 
@@ -453,6 +476,14 @@ void displayLaserCalib(int n_calib)
     dh.update();
 }
 
+void displayError(const char* msg)
+{
+    dh.clearDisplay();
+    dh.drawCentered(String(msg), SCREEN_WIDTH/2, TOP_BAR_HEIGHT + 40, &Font12);
+    displayBatteryStatus();
+    dh.update();
+}
+
 void displayLoading(LoadingEnum loading_type)
 {
     static int count = 0;
@@ -502,28 +533,28 @@ void executeMenuAction(OLED::MenuEnum menu_action)
     break;
     
     case OLED::MenuEnum::MENU_FORCE_CAL:
-        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "FORCE_CAL start - Free heap: %u, Largest block: %u", 
+        Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "FORCE_CAL start - Free heap: %u, Largest block: %u", 
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
         
         // Add a small delay to allow any pending operations to complete
         vTaskDelay(pdMS_TO_TICKS(100));
-        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After delay - Free heap: %u, Largest block: %u", 
+        Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "After delay - Free heap: %u, Largest block: %u", 
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
         
         sh.loadRawCalibrationData();  // Only load raw data, not computed parameters
-        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After loadRawCalibrationData - Free heap: %u, Largest block: %u", 
+        Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "After loadRawCalibrationData - Free heap: %u, Largest block: %u", 
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
         
         sh.calibrate();
-        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After calibrate - Free heap: %u, Largest block: %u", 
+        Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "After calibrate - Free heap: %u, Largest block: %u", 
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
         
         sh.align();
-        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After align - Free heap: %u, Largest block: %u", 
+        Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "After align - Free heap: %u, Largest block: %u", 
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
         
         sh.saveCalibration();
-        Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "FORCE_CAL complete - Free heap: %u, Largest block: %u", 
+        Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "FORCE_CAL complete - Free heap: %u, Largest block: %u", 
                          ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     break;
 
@@ -533,8 +564,24 @@ void executeMenuAction(OLED::MenuEnum menu_action)
 }
 
 void runCalibration(){
+    // Extend WDT timeout for heavy Eigen calibration operations
+    const esp_task_wdt_config_t calib_wdt = {
+        .timeout_ms = 30000,
+        .idle_core_mask = 0,
+        .trigger_panic = true
+    };
+    esp_task_wdt_reconfigure(&calib_wdt);
+
     sh.lock();
     sh.calibrate();
     sh.align();
     sh.unlock();
+
+    // Restore normal WDT timeout
+    const esp_task_wdt_config_t normal_wdt = {
+        .timeout_ms = 10000,
+        .idle_core_mask = 0,
+        .trigger_panic = true
+    };
+    esp_task_wdt_reconfigure(&normal_wdt);
 }

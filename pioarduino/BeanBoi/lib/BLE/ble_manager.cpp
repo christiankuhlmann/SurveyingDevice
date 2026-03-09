@@ -1,7 +1,8 @@
 #include "ble_manager.h"
+#include "debug_csd.h"
 
 // BLE operation timeout constants
-constexpr TickType_t BLE_MUTEX_TIMEOUT_MS = portMAX_DELAY;     // Mutex acquisition timeout
+constexpr TickType_t BLE_MUTEX_TIMEOUT_MS = 1000;     // Mutex acquisition timeout (ms)
 constexpr TickType_t BLE_QUEUE_TIMEOUT_MS = 0;       // Non-blocking queue send
 
 // Globals
@@ -74,7 +75,7 @@ class CmdRdyCallback : public NimBLECharacteristicCallbacks {
             xSemaphoreGive(bleDataMutex);
         } else {
             // Mutex timeout - log but don't block
-            Serial.println("BLE: Mutex timeout in onWrite callback");
+            Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_BLE, "Mutex timeout in onWrite callback");
         }
     }
 };
@@ -104,9 +105,19 @@ void bleTask(void* parameter) {
 
     // Create server and set callbacks
     pServer = NimBLEDevice::createServer();
+    if (!pServer) {
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_BLE, "Failed to create BLE server");
+        vTaskDelete(NULL);
+        return;
+    }
     pServer->setCallbacks(new ServerCallbacks());
 
     pService = pServer->createService(SERVICE_UUID);
+    if (!pService) {
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_BLE, "Failed to create BLE service");
+        vTaskDelete(NULL);
+        return;
+    }
 
     /*******************************************************************************
      * Create command characteristics
@@ -186,7 +197,7 @@ void bleTask(void* parameter) {
             if (deviceConnected && pRcvCharacteristic) {
                 //Keep trying until data is received successfully, with retry limit
                 int retries = 0;
-                const int MAX_BLE_RETRIES = 10;
+                const int MAX_BLE_RETRIES = 3;
                 while (!data_received_successfully && deviceConnected && retries < MAX_BLE_RETRIES) {
                     pHCharacteristic->setValue(dataToSend.heading);
                     pICharacteristic->setValue(dataToSend.inclination);
@@ -195,11 +206,11 @@ void bleTask(void* parameter) {
                     pTSCharacteristic->setValue(dataToSend.timestamp);
                     pRdyCharacteristic->setValue(true);
                     pRdyCharacteristic->notify();
-                    vTaskDelay(1000 / portTICK_PERIOD_MS);
+                    vTaskDelay(pdMS_TO_TICKS(200));
                     retries++;
                 }
                 if (!data_received_successfully) {
-                    Serial.println("BLE: Data send failed after retries or disconnect");
+                    Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_BLE, "Data send failed after retries or disconnect");
                 }
                 data_received_successfully = false;
             }
@@ -211,19 +222,19 @@ void bleTask(void* parameter) {
 // API: Call from Core 0 to queue data for BLE
 void sendBLEData(const MeasurementRecord& data) {
     if (!bleSendQueue) {
-        Serial.println("BLE: Queue not initialized");
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_BLE, "Queue not initialized");
         return;
     }
     
     // Non-blocking send - if queue is full, data is dropped
     if (xQueueSend(bleSendQueue, &data, BLE_QUEUE_TIMEOUT_MS) != pdTRUE) {
-        Serial.println("BLE: Queue full - measurement data dropped");
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_BLE, "Queue full - measurement data dropped");
     }
 }
 
 // API: Start BLE task on Core 1
 void startBLETask() {
-    bleSendQueue = xQueueCreate(4, sizeof(MeasurementRecord));
+    bleSendQueue = xQueueCreate(16, sizeof(MeasurementRecord));
     bleDataMutex = xSemaphoreCreateMutex();
     xTaskCreatePinnedToCore(
         bleTask,

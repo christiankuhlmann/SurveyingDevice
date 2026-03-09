@@ -1,4 +1,5 @@
 #include "display_funcs.h"
+#include "debug_csd.h"
 #include "inttypes.h"
 
 using namespace OLED;
@@ -14,10 +15,13 @@ Point::Point(uint16_t px, uint16_t py)
 
 Point OLED::rotatePoint(const Point p, const uint16_t cx, const uint16_t cy , const float rads)
 {
-    float x, y;
-    x = std::round(cos(rads) * ((float)p.x - (float)cx) - sin(rads) * ((float)p.y - (float)cy) + (float)cx);
-    y = std::round(sin(rads) * ((float)p.x - (float)cx) + cos(rads) * ((float)p.y - (float)cy) + (float)cy);
-	return Point((uint16_t) x, (uint16_t) y);
+    float fx, fy;
+    fx = std::round(cos(rads) * ((float)p.x - (float)cx) - sin(rads) * ((float)p.y - (float)cy) + (float)cx);
+    fy = std::round(sin(rads) * ((float)p.x - (float)cx) + cos(rads) * ((float)p.y - (float)cy) + (float)cy);
+    // Clamp to valid uint16_t range to prevent underflow wrapping
+    uint16_t rx = (fx < 0.0f) ? 0 : (fx > 65535.0f) ? 65535 : (uint16_t)fx;
+    uint16_t ry = (fy < 0.0f) ? 0 : (fy > 65535.0f) ? 65535 : (uint16_t)fy;
+	return Point(rx, ry);
 }
 
 
@@ -29,12 +33,12 @@ bool DisplayHandler::init() {
     
     BlackImage = (UBYTE *)malloc(Imagesize);
     if (!BlackImage) {
-        Serial.print("CRITICAL: Failed to allocate display buffer\r\n");
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_OLED, "Failed to allocate display buffer");
         return false;
     }
 
     System_Init();                                                                                                                                                                                                                                                                                   
-    Serial.print(F("OLED_Init()...\r\n"));
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_OLED, "OLED_Init()...");
     OLED_2IN42_Init();
     Driver_Delay_ms(500); 
     OLED_2IN42_Clear(); 
@@ -58,6 +62,7 @@ bool DisplayHandler::init() {
     // Clear Display
     OLED_2IN42_Clear();
 
+    return true;
 }
 
 void DisplayHandler::drawHeading(float heading)

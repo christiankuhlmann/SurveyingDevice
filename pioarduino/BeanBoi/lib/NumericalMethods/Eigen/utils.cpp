@@ -3,7 +3,13 @@ namespace NumericalMethods {
 
 float angle(Vector3f u, Vector3f v)
 {
-    return acos(u.dot(v)/(u.norm()*v.norm()));
+    float un = u.norm();
+    float vn = v.norm();
+    if (un < 1e-10f || vn < 1e-10f) return 0.0f;
+    float cosAngle = u.dot(v) / (un * vn);
+    // Clamp to [-1,1] to protect against float imprecision in acos
+    cosAngle = std::max(-1.0f, std::min(1.0f, cosAngle));
+    return acos(cosAngle);
 }
 
 Matrix3f quatRot(const Vector3f &ax, float rads)
@@ -67,6 +73,11 @@ Matrix3f inertialToENU(const Vector3f &m, const Vector3f &g)
     // Use cross product to generate set of real world axis in body frame
     Vector3f E, N, U;
     E = g.cross(m);
+    if (E.norm() < 1e-10f) {
+        // Degenerate case: g and m parallel — return identity as fallback
+        ENU.setIdentity();
+        return ENU;
+    }
     E.normalize();
 
     N = E.cross(g);
@@ -115,7 +126,7 @@ Vector3f inertialToCardan(const Vector3f &m, const Vector3f &g)
 
     // atan2(Ux,sqrt(Ex^2 + Nx^2)) -> Inclination of U above XZ plane
     // Alternatively atan2(Ux*cos(heading), Nx) works as sqrt(Ex^2 + Nx^2) = Nx/cos(heading)
-    HIR(1) = atan2(U(0), sqrt(pow(E(0),2) + pow(N(0),2))); // atand(y,x) -> atan2(Ux, sqrt(Ex^2 + Nx^2))
+    HIR(1) = atan2(U(0), sqrt(E(0)*E(0) + N(0)*N(0)));
 
     // Angle between device z axis and actual g measurement when projected into the YZ plane
     // atan2(-Uy, Uz)

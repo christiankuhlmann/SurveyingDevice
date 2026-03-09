@@ -10,8 +10,10 @@ public:
     RM3100SensorConnection(RM3100 &rm3100);
     Vector3f getMeasurement();
     void init();
+    bool hasError() const { return _error; }
 private:
     RM3100 &rm3100_connection; /** Pointer to the rm3100_object associated with this connection*/
+    bool _error = false;
 };
 
 
@@ -25,7 +27,7 @@ inline void RM3100SensorConnection::init()
 
 inline Vector3f RM3100SensorConnection::getMeasurement()
 {
-    rm3100_connection.update();
+    _error = !rm3100_connection.update();
     Vector3f data;
     // Div by 50 to come closer to normalised
     // RM3100 physical mounting requires [X, -Y, -Z] transformation

@@ -19,6 +19,8 @@ const int   N_SHOT_SAMPLES   = 100;    ///< Samples averaged per measurement sho
 const int   N_UPDATE_SAMPLES = 5;      ///< Samples averaged per display-refresh reading
 const int   N_STABILISATION  = 10;     ///< Ring-buffer depth for stabilisation check
 const float STDEV_LIMIT      = 0.05f;  ///< Accelerometer-norm σ threshold for stability
+const float MAG_STDEV_FACTOR = 10.0f;  ///< Mag σ threshold multiplier (mag norm varies more)
+const int   MAX_STABILISATION_ITERS = 1000;  ///< Max stabilisation iterations before abort
 
 // ---------------------------------------------------------------------------
 // Data structures
@@ -111,11 +113,12 @@ private:
     MeasurementRecord corrected_shot_data; ///< Corrected shot / live reading
     Vector3f acc_data, mag_data;
     float    las_data = 0.0f;
+    bool     sensors_ready = false;        ///< True after all sensors init successfully
 
 public:
     SensorHandler(Accelerometer &a, Magnetometer &m, Laser &l);
 
-    void init();
+    bool init();
 
     /// Try to acquire the mutex (non-blocking). Returns true if acquired.
     bool tryLock();
@@ -123,6 +126,9 @@ public:
     void lock();
     /// Release the mutex.
     void unlock();
+
+    /// Returns true if all sensors initialised successfully.
+    bool isSensorsReady() const { return sensors_ready; }
 
     // --- Accessors ---
     Vector3f getAccData();

@@ -6,6 +6,7 @@
   | function    : Provide the hardware underlying interface
 ******************************************************************************/
 #include "DEV_Config.h"
+#include "debug_csd.h"
 
 /********************************************************************************
   function: System Init and exit
@@ -23,7 +24,7 @@ uint8_t System_Init(void)
   Serial.begin(115200);
 
 #if USE_SPI_4W
-  Serial.println("USE_SPI");
+  Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_OLED, "USE_SPI");
   //set OLED SPI
   SPI.setDataMode(SPI_MODE3);
   SPI.setBitOrder(MSBFIRST);
@@ -32,7 +33,7 @@ uint8_t System_Init(void)
 
 #elif USE_IIC
   //set OLED I2C
-  Serial.println("USE_I2C");
+  Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_OLED, "USE_I2C");
   // OLED_DC_0;//DC = 1 => Address = 0x3d
   // OLED_CS_0;
   Wire.setClock(1000000);

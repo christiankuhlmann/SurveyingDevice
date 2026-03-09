@@ -2,6 +2,8 @@
 #include "ArduinoEigenExtension.h"
 
 
+static constexpr float PSEUDOINVERSE_DET_THRESHOLD = 0.05f;
+
 namespace NumericalMethods {
 
 RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
@@ -39,9 +41,9 @@ RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
     D_T.setZero();
     C.setZero();
 
-    D_T.col(0) << x.array().pow(2);
-    D_T.col(1) << y.array().pow(2);
-    D_T.col(2) << z.array().pow(2);
+    D_T.col(0) << x.array().square();
+    D_T.col(1) << y.array().square();
+    D_T.col(2) << z.array().square();
     D_T.col(3) << 2*y.array()*z.array();
     D_T.col(4) << 2*x.array()*z.array();
     D_T.col(5) << 2*x.array()*y.array();
@@ -70,6 +72,10 @@ RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
     // Solve least squares - Eqn(14) and Eqn(15)
     M  = C.inverse() * (S11 - S12*S22.inverse() * S21);
     es.compute(M);
+    if (es.info() != Eigen::Success) {
+        U.setZero();
+        return U;
+    }
     eigenvalues = es.eigenvalues();
     eigenvectors = es.eigenvectors();
 
@@ -87,7 +93,7 @@ RowVector<float,10> fitEllipsoid(const Ref<const MatrixXf> &samples)
     }
 
     // To preserve stabikity of calculations. Use pseudoinverse it determinant too small
-    if (S22.determinant() < 0.05)
+    if (S22.determinant() < PSEUDOINVERSE_DET_THRESHOLD)
     {
         u2 = -(Eigen::pseudoInverse(S22) * S21) * u1;
     } else {

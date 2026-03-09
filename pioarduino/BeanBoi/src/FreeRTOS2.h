@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "utils.h"
 #include <inttypes.h>
+#include <atomic>
 #include <freertos/task.h>
 #include <debug_csd.h>
 #include "config.h"
@@ -57,8 +58,8 @@
  ****************************************************************/
 namespace TaskPriorities {
     constexpr UBaseType_t COMPUTE = 1;   // Background processing
-    constexpr UBaseType_t INPUT = 2;     // Button interrupt handling
-    constexpr UBaseType_t DISPLAY = 3;   // User-facing 5Hz refresh
+    constexpr UBaseType_t INPUT_HANDLER = 2;     // Button interrupt handling
+    constexpr UBaseType_t DISPLAY_HANDLER = 3;   // User-facing 5Hz refresh
 }
 
 /****************************************************************
@@ -68,13 +69,13 @@ namespace TaskPriorities {
  * - COMPUTE: 100,000 words (400KB) - Large due to Eigen matrix
  *            operations during calibration (fitEllipsoid uses
  *            ~30KB static buffers)
- * - INPUT:   2,500 words (10KB) - Moderate for state machine
- * - DISPLAY: 2,500 words (10KB) - Moderate for OLED operations
+ * - INPUT_HANDLER: 2,500 words (10KB) - Moderate for state machine
+ * - DISPLAY_HANDLER: 2,500 words (10KB) - Moderate for OLED operations
  ****************************************************************/
 namespace TaskStackSizes {
-    constexpr uint32_t COMPUTE = 100000;  // 400KB for Eigen operations
-    constexpr uint32_t INPUT = 2500;      // 10KB for state machine
-    constexpr uint32_t DISPLAY = 2500;    // 10KB for OLED rendering
+    constexpr uint32_t COMPUTE = 25000;   // 100KB for Eigen operations
+    constexpr uint32_t INPUT_HANDLER = 2500;      // 10KB for state machine
+    constexpr uint32_t DISPLAY_HANDLER = 2500;    // 10KB for OLED rendering
 }
 
 /****************************************************************
@@ -143,13 +144,13 @@ enum DeviceStateEnum
 };
 
 /****************************************************************
- * External global variables
+ * External global variables (atomic for cross-task safety)
  ****************************************************************/
-extern DeviceStateEnum current_mode;
-extern DeviceStateEnum next_mode;
-extern DisplayModeEnum display_mode;
-extern OLED::MenuEnum menu_state;
-extern int calib_progress;
+extern std::atomic<DeviceStateEnum> current_mode;
+extern std::atomic<DeviceStateEnum> next_mode;
+extern std::atomic<DisplayModeEnum> display_mode;
+extern std::atomic<OLED::MenuEnum> menu_state;
+extern std::atomic<int> calib_progress;
 
 /****************************************************************
  * Interrupt handlers

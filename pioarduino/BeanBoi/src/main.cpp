@@ -1,5 +1,10 @@
 #include "FreeRTOS2.h"
 
+extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+    Debug_csd::logf(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_MAIN, "STACK OVERFLOW in task: %s", pcTaskName);
+    esp_restart();
+}
 
 void setup()
 {
@@ -18,29 +23,29 @@ void setup()
         TaskPriorities::COMPUTE,
         &computefunc_task,
         0); // Core 0: Sensor processing
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Computehandler started sucessfully");
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Computehandler started successfully");
 
     delay(500);
     xTaskCreatePinnedToCore(
         inputhandler,
         "inputhandler",
-        TaskStackSizes::INPUT,
+        TaskStackSizes::INPUT_HANDLER,
         NULL,
-        TaskPriorities::INPUT,
+        TaskPriorities::INPUT_HANDLER,
         &inputhandler_task,
         0); // Core 0: Button handling
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Inputhandler started sucessfully");
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Inputhandler started successfully");
 
     delay(500);
     xTaskCreatePinnedToCore(
         displayhandler,
         "displayhandler",
-        TaskStackSizes::DISPLAY,
+        TaskStackSizes::DISPLAY_HANDLER,
         NULL,
-        TaskPriorities::DISPLAY,
+        TaskPriorities::DISPLAY_HANDLER,
         &displayhandler_task,
         0); // Core 0: OLED refresh
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "displayhandler started sucessfully");
+    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "displayhandler started successfully");
 
     startBLETask();
 

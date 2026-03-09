@@ -11,12 +11,13 @@ namespace EigenFileFuncs
 {
 using namespace FileFuncs;
 
-inline void writeToFile(const char* fname, const char* name, const Ref<const MatrixXf> &mat)
+inline bool writeToFile(const char* fname, const char* name, const Ref<const MatrixXf> &mat)
 {
   Preferences& preferences = getPreferences();
-  preferences.begin(fname, false);
-  preferences.putBytes(name,mat.data(),mat.size()*sizeof(float));
+  if (!preferences.begin(fname, false)) return false;
+  size_t written = preferences.putBytes(name,mat.data(),mat.size()*sizeof(float));
   preferences.end();
+  return written > 0;
 }
 
 inline bool readFromFile(const char* fname, const char* name, Ref<MatrixXf> mat)

@@ -1,4 +1,5 @@
 #include "RM3100.h"
+#include "debug_csd.h"
 
 uint8_t RM3100::readReg(uint8_t addr){
   uint8_t data = 0;
@@ -8,7 +9,7 @@ uint8_t RM3100::readReg(uint8_t addr){
   Wire.write(addr); //request from the REVID register
   Wire.endTransmission();
 
-  delay(100);
+  vTaskDelay(pdMS_TO_TICKS(100));
 
   // Request 1 byte from the register specified earlier
   Wire.requestFrom(RM3100Address, 1);
@@ -80,7 +81,7 @@ void RM3100::begin(bool usedrdy)
 }
 
 
-void RM3100::update() {
+bool RM3100::update() {
   long x = 0;
   long y = 0;
   long z = 0;
@@ -91,20 +92,23 @@ void RM3100::update() {
     unsigned long timeout = millis() + 1000; // 1 second timeout
     while(digitalRead(pin_drdy) == LOW && millis() < timeout); //check RDRY pin
     if(millis() >= timeout) {
-      Serial.println("RM3100: DRDY pin timeout, data may be stale");
+      Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_MAG, "DRDY pin timeout, data may be stale");
     }
   }
   else{
     unsigned long timeout = millis() + 1000; // 1 second timeout
     while((readReg(RM3100_STATUS_REG) & 0x80) != 0x80 && millis() < timeout); //read internal status register
     if(millis() >= timeout) {
-      Serial.println("RM3100: Status register timeout, data may be stale");
+      Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_MAG, "Status register timeout, data may be stale");
     }
   }
 
   Wire.beginTransmission(RM3100Address);
   Wire.write(0x24); //request from the first measurement results register
-  Wire.endTransmission();
+  if (Wire.endTransmission() != 0) {
+    Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_MAG, "I2C transmission error");
+    return false;
+  }
 
   // Request 9 bytes from the measurement results registers
   Wire.requestFrom(RM3100Address, 9);
@@ -120,26 +124,15 @@ void RM3100::update() {
     z2 = Wire.read();
     z1 = Wire.read();
     z0 = Wire.read();
+  } else {
+    Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_MAG, "I2C read failed, expected 9 bytes");
+    return false;
   }
 
-  //special bit manipulation since there is not a 24 bit signed int data type
-  if (x2 & 0x80){
-      x = 0xFF;
-  }
-  if (y2 & 0x80){
-      y = 0xFF;
-  }
-  if (z2 & 0x80){
-      z = 0xFF;
-  }
-
-  //format results into single 32 bit signed value
-  x = (x * 256 * 256 * 256) | (int32_t)(x2) * 256 * 256 | (uint16_t)(x1) * 256 | x0;
-  y = (y * 256 * 256 * 256) | (int32_t)(y2) * 256 * 256 | (uint16_t)(y1) * 256 | y0;
-  z = (z * 256 * 256 * 256) | (int32_t)(z2) * 256 * 256 | (uint16_t)(z1) * 256 | z0;
-
-  //calculate magnitude of results
-  float uT = sqrt(pow(((float)(x)/gain),2) + pow(((float)(y)/gain),2)+ pow(((float)(z)/gain),2));
+  // Sign-extend 24-bit values into 32-bit signed integers
+  x = ((int32_t)(int8_t)x2 << 16) | ((uint32_t)x1 << 8) | x0;
+  y = ((int32_t)(int8_t)y2 << 16) | ((uint32_t)y1 << 8) | y0;
+  z = ((int32_t)(int8_t)z2 << 16) | ((uint32_t)z1 << 8) | z0;
 
   this->mag_data.x_counts = x;
   this->mag_data.y_counts = y;
@@ -149,7 +142,8 @@ void RM3100::update() {
   this->mag_data.x_ut = ((float)(x)/gain);// / 45.;
   this->mag_data.y_ut = ((float)(y)/gain);// / 45.;
   this->mag_data.z_ut = ((float)(z)/gain);// / 45.;
-  // Serial.printf("RM3100: x: %ld, y: %ld, z: %ld, uT: %f\n", x, y, z, uT);
+
+  return true;
 }
 
 RM3100::RM3100(){}

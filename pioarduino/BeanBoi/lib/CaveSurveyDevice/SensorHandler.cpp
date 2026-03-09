@@ -61,7 +61,7 @@ static unsigned int counter;
 bool getFileName(unsigned int fileID, char (&fname)[FNAME_LENGTH])
 {
     if (fileID > 999) {
-        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "ERROR: fileID exceeds 999");
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "fileID exceeds 999");
         return false;
     }
     snprintf(fname, FNAME_LENGTH, "SD%03u", fileID);
@@ -71,7 +71,7 @@ bool getFileName(unsigned int fileID, char (&fname)[FNAME_LENGTH])
 bool getVarName(unsigned int counter, char (&varname)[VARNAME_LENGTH])
 {
     if (counter >= 999) {
-        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "ERROR: counter exceeds 998");
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "counter exceeds 998");
         return false;
     }
     snprintf(varname, VARNAME_LENGTH, "%03u", counter + 1);
@@ -83,7 +83,7 @@ bool getCounter(unsigned int fileID, unsigned int &counter)
     char fname[FNAME_LENGTH];
     if (!getFileName(fileID, fname)) return false;
     if (FileFuncs::readFromFile(fname, "counter", counter)) return true;
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Counter not found...");
+    Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Counter not found...");
     return false;
 }
 
@@ -99,12 +99,12 @@ bool saveShotData(const MeasurementRecord &rec, unsigned int fileID)
 {
     char fname[FNAME_LENGTH];
     char varname[VARNAME_LENGTH];
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Saving shot data to file...");
+    Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_SENSOR, "Saving shot data to file...");
 
     if (!getFileName(fileID, fname)) return false;
 
     if (!getCounter(fileID, counter)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "File doesn't exist, creating new one...");
+        Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_SENSOR, "File doesn't exist, creating new one...");
         counter = 0;
         if (!setCounter(fileID, counter)) return false;
     }
@@ -122,7 +122,7 @@ bool readShotData(MeasurementRecord &rec, unsigned int fileID, unsigned int shot
 {
     char fname[FNAME_LENGTH];
     char varname[VARNAME_LENGTH];
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Reading shot data from file...");
+    Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_SENSOR, "Reading shot data from file...");
     if (!getFileName(fileID, fname))  return false;
     if (!getVarName(shotID, varname)) return false;
 
@@ -134,7 +134,7 @@ bool readShotData(MeasurementRecord &rec, unsigned int fileID, unsigned int shot
 
 bool readShotData(MeasurementRecord &rec, unsigned int fileID)
 {
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Reading latest shot data from file...");
+    Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_SENSOR, "Reading latest shot data from file...");
     if (!getCounter(fileID, counter)) return false;
     return readShotData(rec, fileID, counter);
 }
@@ -145,29 +145,72 @@ SensorHandler::SensorHandler(Accelerometer &a, Magnetometer &m, Laser &l):acc(a)
     mutex = xSemaphoreCreateMutex();
 }
 
-void SensorHandler::init()
+bool SensorHandler::init()
 {
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "SensorHandler initialization starting...");
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "SensorHandler initialization starting...");
     
     // Check if accelerometer and magnetometer are different objects
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR, "Accelerometer object address: 0x%08X", (uint32_t)(uintptr_t)&acc);
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR, "Magnetometer object address: 0x%08X", (uint32_t)(uintptr_t)&mag);
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR, "Laser object address: 0x%08X", (uint32_t)(uintptr_t)&las);
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR, "Accelerometer object address: 0x%08X", (uint32_t)(uintptr_t)&acc);
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR, "Magnetometer object address: 0x%08X", (uint32_t)(uintptr_t)&mag);
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR, "Laser object address: 0x%08X", (uint32_t)(uintptr_t)&las);
     
     if ((void*)&acc == (void*)&mag) {
-        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "ERROR: Accelerometer and Magnetometer are the same object!");
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "Accelerometer and Magnetometer are the same object!");
     }
-    
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Acc init...");
-    acc.init();
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Mag init...");
-    mag.init();
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Las init...");
+
+    const int MAX_INIT_RETRIES = 3;
+    const int RETRY_DELAY_MS = 500;
+    sensors_ready = false;
+
+    // Accelerometer init with retries
+    bool acc_ok = false;
+    for (int attempt = 0; attempt < MAX_INIT_RETRIES && !acc_ok; attempt++) {
+        Debug_csd::logf(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_SENSOR, "Acc init attempt %d/%d...", attempt + 1, MAX_INIT_RETRIES);
+        acc.init();
+        // Verify by attempting a measurement
+        Vector3f test = acc.getMeasurement();
+        if (test.norm() > 0.01f) {
+            acc_ok = true;
+        } else {
+            Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Accelerometer init returned zero data, retrying...");
+            vTaskDelay(pdMS_TO_TICKS(RETRY_DELAY_MS));
+        }
+    }
+    if (!acc_ok) {
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "Accelerometer failed to initialise after retries");
+    }
+
+    // Magnetometer init with retries
+    bool mag_ok = false;
+    for (int attempt = 0; attempt < MAX_INIT_RETRIES && !mag_ok; attempt++) {
+        Debug_csd::logf(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_SENSOR, "Mag init attempt %d/%d...", attempt + 1, MAX_INIT_RETRIES);
+        mag.init();
+        Vector3f test = mag.getMeasurement();
+        if (test.norm() > 0.01f) {
+            mag_ok = true;
+        } else {
+            Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Magnetometer init returned zero data, retrying...");
+            vTaskDelay(pdMS_TO_TICKS(RETRY_DELAY_MS));
+        }
+    }
+    if (!mag_ok) {
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "Magnetometer failed to initialise after retries");
+    }
+
+    // Laser init (single attempt — laser may be optional)
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Laser init...");
     las.init();
 
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading calibration...");
+    sensors_ready = acc_ok && mag_ok;
+
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Loading calibration...");
     resetCalibration();
     loadCalibration();
+
+    if (!sensors_ready) {
+        Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR, "SENSOR INIT INCOMPLETE - device needs sensor check");
+    }
+    return sensors_ready;
 }
 
 bool SensorHandler::tryLock()
@@ -202,6 +245,8 @@ void SensorHandler::resetCalibration()
 
 void SensorHandler::update()
 {
+    if (!tryLock()) return;  // Skip update if mutex held (e.g. during takeShot)
+
     mag_data << 0, 0, 0;
     acc_data << 0, 0, 0;
     for (int i = 0; i < N_UPDATE_SAMPLES; i++)
@@ -210,7 +255,7 @@ void SensorHandler::update()
         Vector3f temp_acc = acc.getMeasurement();
 
         if (i == 0) {
-            Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+            Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR,
                 "First sensor reading - Mag: %f %f %f, Acc: %f %f %f",
                 temp_mag(0), temp_mag(1), temp_mag(2),
                 temp_acc(0), temp_acc(1), temp_acc(2));
@@ -233,23 +278,25 @@ void SensorHandler::update()
     if (corrected_shot_data.heading < 0) corrected_shot_data.heading += 360.0f;
     corrected_shot_data.direction   = NumericalMethods::inertialToVector(corrected_shot_data.mag, corrected_shot_data.acc);
 
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR,
         "Raw acc data: X %f   Y %f   Z %f   Norm: %f",
         acc_data(0), acc_data(1), acc_data(2), acc_data.norm());
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR,
         "Raw mag data: X %f   Y %f   Z %f   Norm: %f",
         mag_data(0), mag_data(1), mag_data(2), mag_data.norm());
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR,
         "Corrected acc: X %f   Y %f   Z %f   Norm: %f",
         corrected_shot_data.acc(0), corrected_shot_data.acc(1), corrected_shot_data.acc(2),
         corrected_shot_data.acc.norm());
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR,
         "Corrected mag: X %f   Y %f   Z %f   Norm: %f",
         corrected_shot_data.mag(0), corrected_shot_data.mag(1), corrected_shot_data.mag(2),
         corrected_shot_data.mag.norm());
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,
-        "HIR data: H %f   I %f   R %f\n",
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_SENSOR,
+        "HIR data: H %f   I %f   R %f",
         corrected_shot_data.heading, corrected_shot_data.inclination, corrected_shot_data.roll);
+
+    unlock();
 }
 
 MeasurementRecord SensorHandler::getShotData(bool corrected)
@@ -264,38 +311,107 @@ MeasurementRecord SensorHandler::getShotData(bool corrected)
 
 int SensorHandler::takeShot(bool laser_reading, bool use_stabilisation)
 {
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Starting to take shot...");
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Taking measurement...");
+    int stabilisation_iters = 0;
     if (use_stabilisation)
     {
-        // Wait until device is steady
-        Vector<float,N_STABILISATION> norm_buffer;
+        // Wait until both accelerometer and magnetometer readings are steady.
+        // Uses ring buffers of norms to detect stability via standard deviation.
+        Vector<float,N_STABILISATION> acc_norm_buffer;
+        Vector<float,N_STABILISATION> mag_norm_buffer;
         for (int i=0; i<N_STABILISATION; i++)
         {
-            norm_buffer(i) = acc.getMeasurement().norm();
+            acc_norm_buffer(i) = acc.getMeasurement().norm();
+            mag_norm_buffer(i) = mag.getMeasurement().norm();
         }
 
         int i = 0;
-        while (NumericalMethods::stDev(norm_buffer) > STDEV_LIMIT)
+        while (NumericalMethods::stDev(acc_norm_buffer) > STDEV_LIMIT ||
+               NumericalMethods::stDev(mag_norm_buffer) > STDEV_LIMIT * MAG_STDEV_FACTOR)
         {
-            norm_buffer(i%N_STABILISATION) = acc.getMeasurement().norm();
+            acc_norm_buffer(i%N_STABILISATION) = acc.getMeasurement().norm();
+            mag_norm_buffer(i%N_STABILISATION) = mag.getMeasurement().norm();
             i++;
 
-            if (i > 1000) { return 1; }
+            if (i > MAX_STABILISATION_ITERS) {
+                Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR,
+                    "Shot failed: device not stable after 1000 iterations");
+                return 1;
+            }
         }
+        stabilisation_iters = i;
     }
 
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Stabilised...");
-    // Take samples
-    mag_data << 0,0,0;
-    acc_data << 0,0,0;
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Stabilised (%d iterations).", stabilisation_iters);
+
+    // Collect all N samples first, then reject outliers based on norm
+    float mag_norms[N_SHOT_SAMPLES];
+    float acc_norms[N_SHOT_SAMPLES];
+    Vector3f mag_samples[N_SHOT_SAMPLES];
+    Vector3f acc_samples[N_SHOT_SAMPLES];
+
     for (int i=0; i<N_SHOT_SAMPLES; i++)
     {
-        mag_data += mag.getMeasurement();
-        acc_data += acc.getMeasurement();
+        mag_samples[i] = mag.getMeasurement();
+        acc_samples[i] = acc.getMeasurement();
+        mag_norms[i] = mag_samples[i].norm();
+        acc_norms[i] = acc_samples[i].norm();
     }
-    mag_data /= N_SHOT_SAMPLES;
-    acc_data /= N_SHOT_SAMPLES;
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Data collected...");
+
+    // Compute initial mean and stddev of norms for outlier detection
+    float mag_norm_mean = 0, acc_norm_mean = 0;
+    for (int i = 0; i < N_SHOT_SAMPLES; i++) {
+        mag_norm_mean += mag_norms[i];
+        acc_norm_mean += acc_norms[i];
+    }
+    mag_norm_mean /= N_SHOT_SAMPLES;
+    acc_norm_mean /= N_SHOT_SAMPLES;
+
+    float mag_norm_var = 0, acc_norm_var = 0;
+    for (int i = 0; i < N_SHOT_SAMPLES; i++) {
+        float md = mag_norms[i] - mag_norm_mean;
+        float ad = acc_norms[i] - acc_norm_mean;
+        mag_norm_var += md * md;
+        acc_norm_var += ad * ad;
+    }
+    float mag_norm_sd = sqrtf(mag_norm_var / N_SHOT_SAMPLES);
+    float acc_norm_sd = sqrtf(acc_norm_var / N_SHOT_SAMPLES);
+
+    // Average only samples within 2 sigma of the norm mean
+    const float OUTLIER_SIGMA = 2.0f;
+    mag_data.setZero();
+    acc_data.setZero();
+    int mag_count = 0, acc_count = 0;
+    for (int i = 0; i < N_SHOT_SAMPLES; i++) {
+        if (fabsf(mag_norms[i] - mag_norm_mean) <= OUTLIER_SIGMA * mag_norm_sd) {
+            mag_data += mag_samples[i];
+            mag_count++;
+        }
+        if (fabsf(acc_norms[i] - acc_norm_mean) <= OUTLIER_SIGMA * acc_norm_sd) {
+            acc_data += acc_samples[i];
+            acc_count++;
+        }
+    }
+    // Fallback: if too many rejected, use all samples
+    bool low_quality = false;
+    if (mag_count < N_SHOT_SAMPLES / 2) {
+        mag_data.setZero();
+        for (int i = 0; i < N_SHOT_SAMPLES; i++) mag_data += mag_samples[i];
+        mag_count = N_SHOT_SAMPLES;
+        low_quality = true;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Mag outlier rejection discarded >50%, using all samples");
+    }
+    if (acc_count < N_SHOT_SAMPLES / 2) {
+        acc_data.setZero();
+        for (int i = 0; i < N_SHOT_SAMPLES; i++) acc_data += acc_samples[i];
+        acc_count = N_SHOT_SAMPLES;
+        low_quality = true;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Acc outlier rejection discarded >50%, using all samples");
+    }
+    mag_data /= mag_count;
+    acc_data /= acc_count;
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Data collected (%d/%d mag, %d/%d acc samples after outlier rejection).",
+                     mag_count, N_SHOT_SAMPLES, acc_count, N_SHOT_SAMPLES);
 
     
     if (laser_reading) {
@@ -326,14 +442,15 @@ int SensorHandler::takeShot(bool laser_reading, bool use_stabilisation)
     corrected_shot_data.distance    = las_data + DEVICE_LENGTH;
     corrected_shot_data.timestamp   = (uint32_t)millis();
 
-
-
-    
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Laser measurement: %f ", las_data);
+    Debug_csd::logf(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_SENSOR, "Laser measurement: %f", las_data);
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR,
+        "Measurement complete: H=%.1f deg I=%.1f deg R=%.1f deg D=%.3fm",
+        corrected_shot_data.heading, corrected_shot_data.inclination,
+        corrected_shot_data.roll, corrected_shot_data.distance);
 
     las.toggleLaser(true);
 
-    return 0;
+    return low_quality ? 2 : 0;
 }
 
 void SensorHandler::correctData(Vector3f &m, Vector3f &g)
@@ -401,7 +518,7 @@ int SensorHandler::collectStaticCalibData()
     }
 
     static_calib_progress++;
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Static calibration progress %i/%i", static_calib_progress, N_ORIENTATIONS);
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Static calibration progress %i/%i", static_calib_progress, N_ORIENTATIONS);
     return static_calib_progress;
 
 }
@@ -410,7 +527,7 @@ int SensorHandler::collectLaserCalibData()
     if (las_calib_progress >= N_LASER_CAL) { return N_LASER_CAL; }
 
     if (takeShot()) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR,"Shot failed! Try again.");
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Shot failed! Try again.");
         return las_calib_progress;
     }
 
@@ -418,21 +535,24 @@ int SensorHandler::collectLaserCalibData()
     laser_calib_data.mag_data.col(las_calib_progress) = mag_data;
     
     las_calib_progress++;
-    Debug_csd::debugf(Debug_csd::DEBUG_SENSOR,"Laser calibration progress %i/%i", las_calib_progress, N_LASER_CAL);
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Laser calibration progress %i/%i", las_calib_progress, N_LASER_CAL);
     return las_calib_progress;
 }
 
 int SensorHandler::calibrate()
 {
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate start - Free heap: %u, Largest block: %u",
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Starting calibration...");
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "calibrate start - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
     NumericalMethods::calibrateEllipsoid(static_calib_data.mag_data, calib_parms.Rm_cal, calib_parms.bm_cal);
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "After mag calibrateEllipsoid - Free heap: %u, Largest block: %u",
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Magnetometer ellipsoid fit complete.");
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "After mag calibrateEllipsoid - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
     NumericalMethods::calibrateEllipsoid(static_calib_data.acc_data, calib_parms.Ra_cal, calib_parms.ba_cal);
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "calibrate complete - Free heap: %u, Largest block: %u",
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Accelerometer ellipsoid fit complete.");
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "calibrate complete - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
     return 0;
@@ -455,6 +575,7 @@ int SensorHandler::align()
     // ----- Step 2: Unified laser alignment -----
     NumericalMethods::alignLaser(cal_laser_acc, cal_laser_mag,
                                  calib_parms.Ra_las, calib_parms.Rm_las);
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Sensor-laser alignment complete.");
 
     // ----- Step 3: Apply calibration to static data -----
     Matrix<float, 3, N_ALIGN_MAG_ACC> cal_static_acc =
@@ -479,6 +600,7 @@ int SensorHandler::align()
         aligned_static_acc, aligned_static_mag,
         calib_parms.Rm_align, calib_parms.inclination_angle,
         &inclination_variance);
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Magnetometer-accelerometer alignment complete.");
 
     // ----- Step 6: Quality assessment -----
     calib_parms.quality = NumericalMethods::computeCalibrationQuality(
@@ -486,14 +608,20 @@ int SensorHandler::align()
         cal_laser_mag_unnorm, cal_laser_acc_unnorm,
         inclination_variance);
 
-    // ----- Debug output -----
-    Serial.printf("Inclination angle: %f\n", calib_parms.inclination_angle);
-    Serial.printf("Quality grade: %s\n",
-                  NumericalMethods::gradeToString(calib_parms.quality.grade));
-    Serial.printf("  Inc sigma: %.3f deg\n", calib_parms.quality.inclination_sigma_deg);
-    Serial.printf("  Mag residual: %.6f\n",  calib_parms.quality.mag_fit_residual);
-    Serial.printf("  Acc residual: %.6f\n",  calib_parms.quality.acc_fit_residual);
-    Serial.printf("  Laser spread: %.3f deg\n", calib_parms.quality.laser_plane_spread_deg);
+    // ----- Structured quality summary -----
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR,
+        "Inclination angle: %.4f", calib_parms.inclination_angle);
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR,
+        "\n      Calibration Quality Grade: %s"
+        "\n        Inclination sigma:       %.2f deg"
+        "\n        Mag fit residual:    %.6f"
+        "\n        Acc fit residual:    %.6f"
+        "\n        Laser plane spread:  %.2f deg",
+        NumericalMethods::gradeToString(calib_parms.quality.grade),
+        calib_parms.quality.inclination_sigma_deg,
+        calib_parms.quality.mag_fit_residual,
+        calib_parms.quality.acc_fit_residual,
+        calib_parms.quality.laser_plane_spread_deg);
 
     return 0;
 }
@@ -504,8 +632,7 @@ void SensorHandler::validateCalibrationQuality()
     // Useful after loadRawCalibrationData() + calibrate() + align().
     // Quality is already computed at end of align(), so this is a no-op
     // unless called independently.
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Quality grade: ");
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR,
+    Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Quality grade: %s",
                      NumericalMethods::gradeToString(calib_parms.quality.grade));
 }
 
@@ -536,8 +663,8 @@ void SensorHandler::saveCalibration()
 }
 void SensorHandler::loadCalibration()
 {
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading calibration data from NVS...");
-    Debug_csd::debugf(Debug_csd::DEBUG_HEAP, "loadCalibration start - Free heap: %u, Largest block: %u",
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Loading calibration data from NVS...");
+    Debug_csd::logf(Debug_csd::LOG_TRACE, Debug_csd::DEBUG_HEAP, "loadCalibration start - Free heap: %u, Largest block: %u",
                      ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 
     // Reset all parameters to identity/zero before loading to prevent
@@ -548,42 +675,42 @@ void SensorHandler::loadCalibration()
 
     // Raw data → "calib_raw"
     if (!EigenFileFuncs::readFromFile("calib_raw", "s_acc", static_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static acc calibration data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Static acc calibration data not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_raw", "s_mag", static_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static mag calibration data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Static mag calibration data not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_raw", "l_acc", laser_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser acc calibration data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Laser acc calibration data not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_raw", "l_mag", laser_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser mag calibration data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Laser mag calibration data not found"); ok = false;
     }
 
     // Computed parameters → "calib_res"
     if (!EigenFileFuncs::readFromFile("calib_res", "Ra_cal", calib_parms.Ra_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Ra_cal not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Ra_cal not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_res", "ba_cal", calib_parms.ba_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "ba_cal not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "ba_cal not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_res", "Rm_cal", calib_parms.Rm_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Rm_cal not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Rm_cal not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_res", "bm_cal", calib_parms.bm_cal)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "bm_cal not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "bm_cal not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_res", "Ra_las", calib_parms.Ra_las)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Ra_las not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Ra_las not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_res", "Rm_las", calib_parms.Rm_las)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Rm_las not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Rm_las not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_res", "Rm_align", calib_parms.Rm_align)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Rm_align not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Rm_align not found"); ok = false;
     }
     if (!FileFuncs::readFromFile("calib_res", "inc_angle", calib_parms.inclination_angle)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Inclination angle not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Inclination angle not found"); ok = false;
     }
 
     // Quality metrics (non-fatal if missing)
@@ -597,9 +724,43 @@ void SensorHandler::loadCalibration()
     }
 
     if (ok) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "All calibration data loaded successfully");
+        // Validate loaded calibration data
+        auto isValidRotation = [](const Matrix3f &R, const char* name) -> bool {
+            float det = R.determinant();
+            if (!std::isfinite(det) || fabsf(det - 1.0f) > 0.1f) {
+                Debug_csd::logf(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR,
+                    "Invalid rotation matrix %s (det=%.4f)", name, det);
+                return false;
+            }
+            return true;
+        };
+        auto isFiniteVec = [](const Vector3f &v, const char* name) -> bool {
+            if (!v.allFinite()) {
+                Debug_csd::logf(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR,
+                    "Non-finite bias vector %s", name);
+                return false;
+            }
+            return true;
+        };
+
+        bool valid = true;
+        valid &= isValidRotation(calib_parms.Ra_cal, "Ra_cal");
+        valid &= isValidRotation(calib_parms.Rm_cal, "Rm_cal");
+        valid &= isValidRotation(calib_parms.Ra_las, "Ra_las");
+        valid &= isValidRotation(calib_parms.Rm_las, "Rm_las");
+        valid &= isValidRotation(calib_parms.Rm_align, "Rm_align");
+        valid &= isFiniteVec(calib_parms.ba_cal, "ba_cal");
+        valid &= isFiniteVec(calib_parms.bm_cal, "bm_cal");
+
+        if (valid) {
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "All calibration data loaded and validated");
+        } else {
+            Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_SENSOR,
+                "Calibration data invalid - resetting to defaults");
+            resetCalibration();
+        }
     } else {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR,
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR,
             "Some calibration data missing - device needs calibration before accurate measurements");
     }
 }
@@ -612,14 +773,14 @@ void SensorHandler::removePrevCalib(bool static_calib)
         int start = static_calib_progress * N_SAMPLES_PER_ORIENTATION;
         static_calib_data.acc_data.block<3, N_SAMPLES_PER_ORIENTATION>(0, start).setZero();
         static_calib_data.mag_data.block<3, N_SAMPLES_PER_ORIENTATION>(0, start).setZero();
-        Debug_csd::debugf(Debug_csd::DEBUG_SENSOR, "Undid static calibration sample, progress now %i/%i",
+        Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Undid static calibration sample, progress now %i/%i",
                          static_calib_progress, N_ORIENTATIONS);
     } else {
         if (las_calib_progress <= 0) return;
         las_calib_progress--;
         laser_calib_data.acc_data.col(las_calib_progress).setZero();
         laser_calib_data.mag_data.col(las_calib_progress).setZero();
-        Debug_csd::debugf(Debug_csd::DEBUG_SENSOR, "Undid laser calibration sample, progress now %i/%i",
+        Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Undid laser calibration sample, progress now %i/%i",
                          las_calib_progress, N_LASER_CAL);
     }
 }
@@ -731,26 +892,26 @@ void SensorHandler::dumpCalibToSerial()
 
 void SensorHandler::loadRawCalibrationData()
 {
-    Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Loading raw calibration data from NVS...");
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Loading raw calibration data from NVS...");
 
     bool ok = true;
     if (!EigenFileFuncs::readFromFile("calib_raw", "s_acc", static_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static acc data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Static acc data not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_raw", "s_mag", static_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Static mag data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Static mag data not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_raw", "l_acc", laser_calib_data.acc_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser acc data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Laser acc data not found"); ok = false;
     }
     if (!EigenFileFuncs::readFromFile("calib_raw", "l_mag", laser_calib_data.mag_data)) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Laser mag data not found"); ok = false;
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Laser mag data not found"); ok = false;
     }
 
     if (ok) {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Raw calibration data loaded successfully");
+        Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_SENSOR, "Raw calibration data loaded successfully");
     } else {
-        Debug_csd::debug(Debug_csd::DEBUG_SENSOR, "Some raw calibration data missing - FORCE_CAL may fail");
+        Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_SENSOR, "Some raw calibration data missing - FORCE_CAL may fail");
     }
 }
 

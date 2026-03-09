@@ -66,6 +66,7 @@ Vector<float,10> alignMagAcc_MAGICAL(const Ref<const Matrix3Xf> &g_in, const Ref
         shat += gk.transpose() * Rhat * mk;
     }
     shat = shat * 1/K;
+    shat = std::max(-1.0f, std::min(1.0f, shat));
 
     out.segment(0,9) << Rhat.reshaped(9,1);
     out(9) = asin(shat);

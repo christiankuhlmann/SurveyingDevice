@@ -25,6 +25,7 @@ public:
     virtual float getMeasurement()=0;
     virtual void toggleLaser()=0;
     virtual void toggleLaser(bool mode)=0;
+    virtual void beep()=0;
     virtual void init()=0;
 };
 

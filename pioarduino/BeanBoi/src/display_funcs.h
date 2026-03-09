@@ -97,7 +97,7 @@ class DisplayHandler {
     void drawSensorCalStatus(int sensor_status);
     void drawBlutooth(bool ble_status);
     void drawBattery(int batt_percentage);
-    void init();
+    bool init();
     void clearDisplay();
     void clearHIData();
     void update();

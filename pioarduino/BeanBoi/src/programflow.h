@@ -3,6 +3,7 @@
 
 #define VBATPIN A6
 
+#include <atomic>
 #include <SensorHandler.h>
 #include "RM3100SensorConnection.h"
 #include "SCA3300SensorConnection.h"
@@ -21,9 +22,9 @@ extern LDK2MSensorConnection sc_laser;
 
 extern SensorHandler sh;
 extern OLED::DisplayHandler dh;
-extern bool y_n_selector;
-extern int history_scroll_index;
-extern unsigned int current_file_id;
+extern std::atomic<bool> y_n_selector;
+extern std::atomic<int> history_scroll_index;
+extern std::atomic<unsigned int> current_file_id;
 
 enum LoadingEnum
 {
@@ -47,7 +48,7 @@ int takeShot();
 int getCalib();
 
 void saveCalib();
-void removePreviosCalib();
+void removePreviousCalib();
 void clearCalibration();
 void loadCalibration();
 
@@ -57,6 +58,7 @@ void displayIdle();
 void displayHistory();
 void displayBatteryStatus();
 void displayMode();
+void displayError(const char* msg);
 
 void displayCalibSaveYN();
 void displayCalibRemYN();

@@ -29,7 +29,7 @@ public:
     void begin();
     void begin(bool useDRDYPin);
     void begin(uint8_t pin);
-    void update();
+    bool update();
     float getX();
     float getY();
     float getZ();

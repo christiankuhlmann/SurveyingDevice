@@ -1,4 +1,8 @@
 #include "FreeRTOS2.h"
+#include <esp_task_wdt.h>
+
+// Watchdog timeout for the compute task (seconds)
+static constexpr uint32_t WDT_TIMEOUT_S = 10;
 
 /****************************************************************
  * Global variable definitions
@@ -22,15 +26,18 @@ uint32_t inputhandlerNotifiedValue = 0x00;
 uint32_t computefuncNotifiedValue = 0x00;
 uint32_t displayhandlerNotifiedValue = 0x00;
 
-DeviceStateEnum current_mode;
-DeviceStateEnum next_mode;
-DisplayModeEnum display_mode;
-OLED::MenuEnum menu_state;
-int calib_progress = 0;
+std::atomic<OLED::MenuEnum> menu_state{static_cast<OLED::MenuEnum>(0)};
+
+std::atomic<DeviceStateEnum> current_mode{MODE_IDLE};
+std::atomic<DeviceStateEnum> next_mode{MODE_IDLE};
+std::atomic<DisplayModeEnum> display_mode{DISP_IDLE};
+std::atomic<int> calib_progress{0};
 
 /****************************************************************
  * Interrupt handlers implementations
  ****************************************************************/
+static constexpr uint32_t DEBOUNCE_MS = 50;  // Ignore edges within 50ms
+
 void IRAM_ATTR displayTimerISR()
 {
     xTaskNotifyFromISR(displayhandler_task,(uint32_t)0x00,eSetValueWithOverwrite,NULL);
@@ -38,35 +45,50 @@ void IRAM_ATTR displayTimerISR()
 
 void IRAM_ATTR B1Interrupt()
 {
-    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B1_INTERRUPT");
+    static uint32_t last_time = 0;
+    uint32_t now = millis();
+    if (now - last_time < DEBOUNCE_MS) return;
+    last_time = now;
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B1,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)(0x10 | ID_B1),eSetValueWithOverwrite,NULL);
 }
 
 void IRAM_ATTR B2Interrupt()
 {
-    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B2_INTERRUPT");
+    static uint32_t last_time = 0;
+    uint32_t now = millis();
+    if (now - last_time < DEBOUNCE_MS) return;
+    last_time = now;
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B2,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)(0x10 | ID_B2),eSetValueWithOverwrite,NULL);
 }
 
 void IRAM_ATTR B3Interrupt()
 {
-    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B3_INTERRUPT");
+    static uint32_t last_time = 0;
+    uint32_t now = millis();
+    if (now - last_time < DEBOUNCE_MS) return;
+    last_time = now;
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B3,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)(0x10 | ID_B3),eSetValueWithOverwrite,NULL);
 }
 
 void IRAM_ATTR B4Interrupt()
 {
-    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B4_INTERRUPT");
+    static uint32_t last_time = 0;
+    uint32_t now = millis();
+    if (now - last_time < DEBOUNCE_MS) return;
+    last_time = now;
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B4,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)(0x10 | ID_B4),eSetValueWithOverwrite,NULL);
 }
 
 void IRAM_ATTR B5Interrupt()
 {
-    // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"B5_INTERRUPT");
+    static uint32_t last_time = 0;
+    uint32_t now = millis();
+    if (now - last_time < DEBOUNCE_MS) return;
+    last_time = now;
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)ID_B5,eSetValueWithoutOverwrite,NULL);
     xTaskNotifyFromISR(inputhandler_task,(uint32_t)(0x10 | ID_B5),eSetValueWithOverwrite,NULL);
 }
@@ -137,14 +159,14 @@ void executeAction(const uint32_t action)
 {
     switch (action)
     {
-        case ACTION_ON_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "On short"); break;
-        case ACTION_UP_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Up short"); break;
-        case ACTION_DOWN_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Down short"); break;
-        case ACTION_MODE_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Mode short"); break;
-        case ACTION_OFF_SHORT: Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Off short"); break;
+        case ACTION_ON_SHORT: Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "On short"); break;
+        case ACTION_UP_SHORT: Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "Up short"); break;
+        case ACTION_DOWN_SHORT: Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "Down short"); break;
+        case ACTION_MODE_SHORT: Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "Mode short"); break;
+        case ACTION_OFF_SHORT: Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "Off short"); break;
     }
 
-    switch (current_mode)
+    switch (current_mode.load())
     {
         /************************************************************************************************
          *                                      IDLE MODE
@@ -154,11 +176,11 @@ void executeAction(const uint32_t action)
         {
             next_mode = MODE_LASER_ON;
             display_mode = DISP_IDLE;
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Laser on");
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Laser on");
             laserOn();
         } else if (action == ACTION_MODE_SHORT)
         {
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: MENU");
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Switching mode to: MENU");
             next_mode = MODE_MENU;
             display_mode = DISP_MENU;
         }
@@ -172,18 +194,23 @@ void executeAction(const uint32_t action)
         {
             next_mode = MODE_IDLE;
             display_mode = DISP_IDLE;
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Taking shot");
-            takeShot();
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Taking shot");
+            if (takeShot() != 0) {
+                // Shot failed — show error briefly then return to laser mode
+                displayError("HOLD STEADY");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                next_mode = MODE_LASER_ON;
+            }
             laserOff();
         } else if (action == ACTION_OFF_SHORT)
         {
             next_mode = MODE_IDLE;
             display_mode = DISP_IDLE;
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Laser off");
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Laser off");
             laserOff();
         } else if (action == ACTION_MODE_SHORT)
         {
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: MENU");
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Switching mode to: MENU");
             next_mode = MODE_MENU;
             display_mode = DISP_MENU;
         }
@@ -197,7 +224,7 @@ void executeAction(const uint32_t action)
             executeMenuAction(menu_state);
 
         } else if (action == ACTION_MODE_SHORT){
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: CALIB");
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Switching mode to: CALIB");
             clearCalibration(); // Clear calibration when entering calibration mode
             next_mode = MODE_CALIB;
             display_mode = DISP_STATIC_CALIB;
@@ -226,7 +253,7 @@ void executeAction(const uint32_t action)
         {
             display_mode = DISP_CALIB_STABILISE;
             delay(1000);
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Getting calibration");
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Getting calibration");
             if (calib_progress == 2 || calib_progress == 3)
             {
                 display_mode = DISP_CALIB_STABILISE;
@@ -255,11 +282,12 @@ void executeAction(const uint32_t action)
             }
 
         } else if (action == ACTION_MODE_SHORT){
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS, "Switching mode to: IDLE");
+            Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Switching mode to: IDLE");
             if (calib_progress > 0)
             {
                 next_mode = MODE_CALIB_EXIT;
                 display_mode = DISP_CALIB_EXIT;
+                y_n_selector = true;  // Reset to default YES
             } else {
                 loadCalibration();
                 next_mode = MODE_IDLE;
@@ -276,11 +304,11 @@ void executeAction(const uint32_t action)
 
                 if (in_laser_phase && laser_at_zero) {
                     // Roll back into static phase
-                    removePreviosCalib();  // calls removePrevCalib(true) since progress will be <= N_ORIENTATIONS
+                    removePreviousCalib();  // calls removePrevCalib(true) since progress will be <= N_ORIENTATIONS
                     laserOff();
                     display_mode = DISP_STATIC_CALIB;
                 } else {
-                    removePreviosCalib();
+                    removePreviousCalib();
                     // Stay in current phase
                     if (sh.getCalibProgress() >= N_ORIENTATIONS) {
                         display_mode = DISP_LASER_CALIB;
@@ -291,7 +319,7 @@ void executeAction(const uint32_t action)
                 }
                 calib_progress = sh.getCalibProgress();
                 laserBeep();
-                Debug_csd::debugf(Debug_csd::DEBUG_ALWAYS, "Undo calib sample, progress: %d", calib_progress);
+                Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Undo calib sample, progress: %d", calib_progress.load());
             }
         }
         break;
@@ -303,7 +331,7 @@ void executeAction(const uint32_t action)
         if (action == ACTION_ON_SHORT)
         {
             if(y_n_selector) {
-                removePreviosCalib();
+                removePreviousCalib();
                 calib_progress = sh.getCalibProgress();
             }
             // Return to calibration mode regardless of choice
@@ -330,7 +358,7 @@ void executeAction(const uint32_t action)
             if (display_mode == DISP_CALIB_QUALITY) {
                 // User has seen quality — advance to save prompt
                 display_mode = DISP_CALIB_SAVE;
-                y_n_selector = true;
+                y_n_selector = true;  // Reset to default YES
             } else {
                 // Save or discard, then load calibration from NVS
                 if(y_n_selector) saveCalib();
@@ -393,12 +421,12 @@ void executeAction(const uint32_t action)
         case MODE_CONFIG:
         break;
     }
-    current_mode = next_mode;
+    current_mode.store(next_mode.load());
 }
 
 void updateDisplay()
 {
-    switch (display_mode)
+    switch (display_mode.load())
     {
     case DISP_IDLE:
         // Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Displaying idle...");
@@ -457,10 +485,10 @@ void updateDisplay()
 
 void initialise_device()
 {
-    sh.init();
+    bool sensors_ok = sh.init();
     // rm3100.begin();
     rm3100.update();
-    Serial.printf("Mag data: %f %f %f\n", rm3100.getX(),rm3100.getY(),rm3100.getZ());
+    Debug_csd::logf(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAG, "Mag data: %f %f %f", rm3100.getX(),rm3100.getY(),rm3100.getZ());
 
     // current_mode = MODE_IDLE;
     current_mode = MODE_IDLE;
@@ -470,6 +498,12 @@ void initialise_device()
     
     // loadCalibration(); // Load calibration from filesystem
     initDisplayHandler();
+
+    if (!sensors_ok) {
+        // Show sensor error on display for 3 seconds
+        displayError("SENSOR ERR");
+        delay(3000);
+    }
 }
 
 void initialise_interrupts()
@@ -483,7 +517,7 @@ void initialise_interrupts()
  ****************************************************************/
 void displayhandler(void* parameter)
 {
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start displayhandler");
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Start displayhandler");
     while(true)
     {
         // Debug_csd::debug(Debug_csd::DEBUG_OLED,"Displayhandler: Waiting for notify...\n");
@@ -500,10 +534,10 @@ void displayhandler(void* parameter)
  ****************************************************************/
 void inputhandler(void* parameter)
 {
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start inputhandler");
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Start inputhandler");
     while(true)
     {
-        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Eventhandler: Waiting for notify...\n");
+        Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "Eventhandler: Waiting for notify...");
         enableRisingInterrupts();
         xTaskNotifyWait(    0x00,      /* Don't clear any notification bits on entry. */
                             ULONG_MAX, /* Reset the notification value to 0 on exit. */
@@ -511,8 +545,7 @@ void inputhandler(void* parameter)
                             portMAX_DELAY );  /* Block indefinitely. */
         enableFallingInterrupts();
 
-        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Received interrupt...");
-        clearInputHandlerEvents();
+        Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "Received interrupt...");
         inputhandlerNotifiedValue = 0;  // Prevent stale value on timeout
         xTaskNotifyWait(        0x00,      /* Don't clear any notification bits on entry. */
                                 ULONG_MAX, /* Reset the notification value to 0 on exit. */
@@ -522,10 +555,10 @@ void inputhandler(void* parameter)
         // Check if we got the button release notification (0x10 bit set)
         // or if we timed out (long press)
         if (inputhandlerNotifiedValue & 0x10) {
-            Debug_csd::debugf(Debug_csd::DEBUG_ALWAYS,"SHORT PRESS");
+            Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "SHORT PRESS");
             inputhandlerNotifiedValue = (inputhandlerNotifiedValue & 0x0F) + 0x10; // Keep button ID, add short press flag
         } else {
-            Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"LONG PRESS");
+            Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "LONG PRESS");
             inputhandlerNotifiedValue = buttonNumber; // Use the button that triggered, no flag = long press
         } 
         xTaskNotify(computefunc_task, inputhandlerNotifiedValue, eSetValueWithOverwrite);
@@ -536,19 +569,35 @@ void inputhandler(void* parameter)
 
 /****************************************************************
  * Task to handle computation - should have lowest priority
+ * Protected by hardware watchdog (WDT_TIMEOUT_S seconds)
  ****************************************************************/
 void computehandler(void* parameter)
 {
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Start computehandler");
-    Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Initialising device...");
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Start computehandler");
+    Debug_csd::log(Debug_csd::LOG_INFO, Debug_csd::DEBUG_MAIN, "Initialising device...");
+
+    // Register this task with the ESP32 Task Watchdog Timer
+    const esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = WDT_TIMEOUT_S * 1000,
+        .idle_core_mask = 0,
+        .trigger_panic = true
+    };
+    esp_task_wdt_init(&wdt_config);
+    esp_task_wdt_add(NULL);  // NULL = current task
+
     sc_accelerometer.getMeasurement();
     while(true)
     {
-        Debug_csd::debug(Debug_csd::DEBUG_ALWAYS,"Computehandler: Waiting for notify...\n");
+        // Remove from WDT while blocking (legitimate idle wait)
+        esp_task_wdt_delete(NULL);
+        Debug_csd::log(Debug_csd::LOG_DEBUG, Debug_csd::DEBUG_MAIN, "Computehandler: Waiting for notify...");
         xTaskNotifyWait(    0x00,      /* Don't clear any notification bits on entry. */
                             ULONG_MAX, /* Reset the notification value to 0 on exit. */
                             &computefuncNotifiedValue, /* Notified value pass out. */
                             portMAX_DELAY );  /* Block indefinitely. */
+        // Re-register with WDT while actively processing
+        esp_task_wdt_add(NULL);
         executeAction(computefuncNotifiedValue);
+        esp_task_wdt_reset();  // Feed after completing action
     }
 }

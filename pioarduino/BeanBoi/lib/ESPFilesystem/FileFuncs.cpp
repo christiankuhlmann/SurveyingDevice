@@ -1,4 +1,5 @@
 #include "FileFuncs.h"
+#include "debug_csd.h"
 
 namespace FileFuncs
 {
@@ -19,19 +20,20 @@ bool locationExists(const char* fname, const char* vname)
         preferences.end();
         return true;
     }
-    Serial.print("ERROR: Key does not exist in file\n");
+    Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_FILE, "Key does not exist in file");
     preferences.end();
     return false;
   }
-  Serial.print("ERROR: file does not exist\n");
+  Debug_csd::log(Debug_csd::LOG_ERROR, Debug_csd::DEBUG_FILE, "File does not exist");
   preferences.end();
   return false;
 }
 
-void writeToFile(const char* fname, const char* vname, const float data){
-  preferences.begin(fname, false);
-  preferences.putFloat(vname,data);
+bool writeToFile(const char* fname, const char* vname, const float data){
+  if (!preferences.begin(fname, false)) return false;
+  size_t written = preferences.putFloat(vname,data);
   preferences.end();
+  return written > 0;
 }
 bool readFromFile(const char* fname, const char* vname, float& data){
   if (!locationExists(fname,vname)) { return false; }
@@ -41,10 +43,11 @@ bool readFromFile(const char* fname, const char* vname, float& data){
   return true;
 }
 
-void writeToFile(const char* fname, const char* vname, const double data){
-  preferences.begin(fname, false);
-  preferences.putDouble(vname,data);
+bool writeToFile(const char* fname, const char* vname, const double data){
+  if (!preferences.begin(fname, false)) return false;
+  size_t written = preferences.putDouble(vname,data);
   preferences.end();
+  return written > 0;
 }
 bool readFromFile(const char* fname, const char* vname, double& data){
   if (!locationExists(fname,vname)) { return false; }
@@ -54,10 +57,11 @@ bool readFromFile(const char* fname, const char* vname, double& data){
   return true;
 }
 
-void writeToFile(const char* fname, const char* vname, const int data){
-  preferences.begin(fname, false);
-  preferences.putInt(vname,data);
+bool writeToFile(const char* fname, const char* vname, const int data){
+  if (!preferences.begin(fname, false)) return false;
+  size_t written = preferences.putInt(vname,data);
   preferences.end();
+  return written > 0;
 }
 bool readFromFile(const char* fname, const char* vname, int& data){
   if (!locationExists(fname,vname)) { return false; }
@@ -67,10 +71,11 @@ bool readFromFile(const char* fname, const char* vname, int& data){
   return true;
 }
 
-void writeToFile(const char* fname, const char* vname, const unsigned int data){
-  preferences.begin(fname, false);
-  preferences.putUInt(vname,data);
+bool writeToFile(const char* fname, const char* vname, const unsigned int data){
+  if (!preferences.begin(fname, false)) return false;
+  size_t written = preferences.putUInt(vname,data);
   preferences.end();
+  return written > 0;
 }
 bool readFromFile(const char* fname, const char* vname, unsigned int& data){
   if (!locationExists(fname,vname)) {
@@ -82,10 +87,11 @@ bool readFromFile(const char* fname, const char* vname, unsigned int& data){
   return true;
 }
 
-void writeToFile(const char* fname, const char* vname, const String data){
-  preferences.begin(fname, false);
-  preferences.putString(vname,data);
+bool writeToFile(const char* fname, const char* vname, const String data){
+  if (!preferences.begin(fname, false)) return false;
+  size_t written = preferences.putString(vname,data);
   preferences.end();
+  return written > 0;
 }
 bool readFromFile(const char* fname, const char* vname, String& data){
   if (!locationExists(fname,vname)) { return false; }
@@ -95,11 +101,12 @@ bool readFromFile(const char* fname, const char* vname, String& data){
   return true;
 }
 
-void writeToFile(const char* fname, const char* vname, const float* data, int size)
+bool writeToFile(const char* fname, const char* vname, const float* data, int size)
 {
-    preferences.begin(fname, false);
-    preferences.putBytes(vname,data,size*sizeof(float));
+    if (!preferences.begin(fname, false)) return false;
+    size_t written = preferences.putBytes(vname,data,size*sizeof(float));
     preferences.end();
+    return written > 0;
 }
 bool readFromFile(const char* fname, const char* vname, float* data, int size)
 {
@@ -110,11 +117,12 @@ bool readFromFile(const char* fname, const char* vname, float* data, int size)
   return true;
 }
 
-void writeToFile(const char* fname, const char* vname, const void* data, size_t size)
+bool writeToFile(const char* fname, const char* vname, const void* data, size_t size)
 {
-    preferences.begin(fname, false);
-    preferences.putBytes(vname,data,size);
+    if (!preferences.begin(fname, false)) return false;
+    size_t written = preferences.putBytes(vname,data,size);
     preferences.end();
+    return written > 0;
 }
 bool readFromFile(const char* fname, const char* vname, void* data, size_t size)
 {
@@ -135,7 +143,7 @@ bool isKey(const char* fname, const char* key)
 
 void erase_flash()
 {
-  Serial.println("ERASING FLASH...");
+  Debug_csd::log(Debug_csd::LOG_WARN, Debug_csd::DEBUG_FILE, "ERASING FLASH...");
   nvs_flash_erase(); // erase the NVS partition and...
   nvs_flash_init(); // initialize the NVS partition.
 }
@@ -144,7 +152,8 @@ void getStatus()
 {
   nvs_stats_t nvs_stats;
   nvs_get_stats(NULL, &nvs_stats);
-  Serial.printf("Count: UsedEntries = (%lu), FreeEntries = (%lu), NamespaceCount = (%lu), AllEntries = (%lu)\n",
+  Debug_csd::logf(Debug_csd::LOG_INFO, Debug_csd::DEBUG_FILE,
+        "Count: UsedEntries = (%lu), FreeEntries = (%lu), NamespaceCount = (%lu), AllEntries = (%lu)",
         nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.namespace_count, nvs_stats.total_entries);
 }
 

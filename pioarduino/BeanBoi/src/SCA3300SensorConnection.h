@@ -11,8 +11,10 @@ public:
     SCA3300SensorConnection(SCA3300 &sca3300);
     Vector3f getMeasurement();
     void init();
+    bool hasError() const { return _error; }
 private:
     SCA3300& sca3300_connection;
+    bool _error = false;
 };
 
 inline SCA3300SensorConnection::SCA3300SensorConnection(SCA3300& sca3300):sca3300_connection(sca3300){}
@@ -42,9 +44,11 @@ inline Vector3f SCA3300SensorConnection::getMeasurement()
 
     if (!available) {
         Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"ERROR: SCA3300 not responding after retries");
+        _error = true;
         data << 0, 0, 0;
         return data;
     }
+    _error = false;
 
     Debug_csd::debug(Debug_csd::DEBUG_ACCEL,"Requesting data...");
     data <<
